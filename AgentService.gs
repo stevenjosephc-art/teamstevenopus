@@ -7,13 +7,17 @@
 // ROLE & ACCESS CONTROL
 // ------------------------------------------------------------
 
-// Returns 'manager', 'agent', or null (no access)
+// Returns 'manager', 'supervisor', 'agent', or null (no access)
 function getUserRole(ldap) {
   if (!ldap) return null;
 
-  // Check Managers sheet first
-  var manager = findRow('Managers', 'LDAP', ldap);
-  if (manager) return 'manager';
+  // Check Managers sheet (contains both Managers and Supervisors)
+  var managerRow = findRow('Managers', 'LDAP', ldap);
+  if (managerRow) {
+    var role = String(managerRow['Role']).toLowerCase();
+    if (role === 'manager' || role === 'supervisor') return role;
+    return 'manager'; // fallback
+  }
 
   // Check Agents sheet
   var agent = findRow('Agents', 'LDAP', ldap);
@@ -26,9 +30,34 @@ function isManager(ldap) {
   return getUserRole(ldap) === 'manager';
 }
 
+function isSupervisor(ldap) {
+  var role = getUserRole(ldap);
+  return role === 'supervisor' || role === 'manager';
+}
+
 function isAgent(ldap) {
   var role = getUserRole(ldap);
-  return role === 'agent' || role === 'manager';
+  return role === 'agent' || role === 'supervisor' || role === 'manager';
+}
+
+/**
+ * Returns a list of LDAPs that the given user can manage.
+ * - Manager: Can manage everyone.
+ * - Supervisor: Can only manage agents where TeamLead matches their LDAP.
+ * - Agent: Can manage nobody.
+ */
+function getManagedLdaps(ldap) {
+  var role = getUserRole(ldap);
+  if (role === 'manager') return null; // null means "all"
+
+  if (role === 'supervisor') {
+    var agents = getSheetData('Agents');
+    return agents
+      .filter(function(a) { return String(a['TeamLead']).toLowerCase() === ldap.toLowerCase(); })
+      .map(function(a) { return a['LDAP']; });
+  }
+
+  return [];
 }
 
 // ------------------------------------------------------------
@@ -166,8 +195,11 @@ function getAgentFullProfile(ldap, includeManagerData) {
 // ALL AGENTS (for manager views)
 // ------------------------------------------------------------
 
-function getAllAgents() {
+function getAllAgents(managedLdaps) {
   var agentsData = getSheetData('Agents');
+  if (managedLdaps) {
+    agentsData = agentsData.filter(function(a) { return managedLdaps.indexOf(a['LDAP']) !== -1; });
+  }
   var managersData = getSheetData('Managers');
   var leaderboardData = getSheetData('Leaderboard');
 

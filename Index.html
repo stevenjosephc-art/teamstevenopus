@@ -1400,8 +1400,13 @@ function applySession(session) {
   headerAvatar.style.padding = '0';
   headerAvatar.style.overflow = 'hidden';
 
-  if (session.role === 'manager') {
+  if (session.role === 'manager' || session.role === 'supervisor') {
     document.getElementById('manager-nav').style.display = 'block';
+    // Optionally change the label to 'Supervisor' if they are one
+    if (session.role === 'supervisor') {
+      var label = document.querySelector('#manager-nav .sidebar-section-label');
+      if (label) label.textContent = 'Supervisor';
+    }
   }
 }
 
@@ -1981,7 +1986,7 @@ function renderLeaderboard() {
 
 function buildLeaderboardHtml(entries) {
   if (!entries || entries.length === 0) return '<div class="empty-state"><div class="empty-state-icon">🏆</div><h3>No data yet</h3><p>Complete tasks to appear on the leaderboard.</p></div>';
-  var isManager = APP.session && APP.session.role === 'manager';
+  var isManager = APP.session && (APP.session.role === 'manager' || APP.session.role === 'supervisor');
   var myEntry = entries.find(function(e) { return e.isMe; });
 
   // My stats strip
@@ -2547,7 +2552,7 @@ function submitFeedbackAction() {
 // and was never invoked from anywhere in the app. renderAnalytics() handles this view.
 
 function renderTaskManager() {
-  if (!APP.session || APP.session.role !== 'manager') {
+  if (!APP.session || (APP.session.role !== 'manager' && APP.session.role !== 'supervisor')) {
     document.getElementById('view-task-manager').innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔒</div><h3>Access Denied</h3></div>';
     return;
   }
@@ -2756,7 +2761,7 @@ function toggleFeatured(taskId, featured) {
 }
 
 function renderKudosQueue() {
-  if (!APP.session || APP.session.role !== 'manager') return;
+  if (!APP.session || (APP.session.role !== 'manager' && APP.session.role !== 'supervisor')) return;
   setLoading('kudos-queue', 'Loading kudos queue...');
   google.script.run
     .withSuccessHandler(buildKudosQueueHtml)
@@ -2824,7 +2829,7 @@ function promptRejectKudos(kudosId) {
 }
 
 function renderDemeritEntry() {
-  if (!APP.session || APP.session.role !== 'manager') return;
+  if (!APP.session || (APP.session.role !== 'manager' && APP.session.role !== 'supervisor')) return;
   setLoading('demerit-entry', 'Loading...');
   google.script.run
     .withSuccessHandler(function(agents) { document.getElementById('view-demerit-entry').innerHTML = buildDemeritEntryHtml(agents); })
@@ -2885,7 +2890,7 @@ function submitDemerit() {
 }
 
 function renderAnalytics() {
-  if (!APP.session || APP.session.role !== 'manager') return;
+  if (!APP.session || (APP.session.role !== 'manager' && APP.session.role !== 'supervisor')) return;
   setLoading('analytics', 'Crunching numbers...');
   google.script.run
     .withSuccessHandler(buildAnalyticsHtml)
@@ -3005,7 +3010,7 @@ function exportAnalyticsCSV() {
 }
 
 function renderAgentLookup(data) {
-  if (!APP.session || APP.session.role !== 'manager') return;
+  if (!APP.session || (APP.session.role !== 'manager' && APP.session.role !== 'supervisor')) return;
   var el = document.getElementById('view-agent-lookup');
   el.innerHTML = '<div class="section-header mb-16"><div class="section-title">🔍 Agent Lookup</div></div>' +
     '<div class="card mb-24"><div style="display:flex;gap:10px">' +

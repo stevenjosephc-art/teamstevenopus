@@ -63,7 +63,7 @@ function updateTask(taskId, taskData, updatedBy) {
 // GET ALL TASKS (manager task manager view)
 // ------------------------------------------------------------
 
-function getAllTasksForManager() {
+function getAllTasksForManager(managedLdaps) {
   var tasks = getSheetData('Tasks');
   var allCompletions = getSheetData('Completions');
 
@@ -74,6 +74,19 @@ function getAllTasksForManager() {
     if (!completionsByTask[tid]) completionsByTask[tid] = [];
     completionsByTask[tid].push(c);
   });
+
+  // If supervisor, filter tasks they created or targeted at their team
+  if (managedLdaps) {
+    tasks = tasks.filter(function(t) {
+      if (t['TargetType'] === 'team' || t['TargetType'] === 'announcement') return true;
+      if (t['TargetType'] === 'specific' && managedLdaps.indexOf(t['TargetValue']) !== -1) return true;
+      if (t['TargetType'] === 'group') {
+        var targets = String(t['TargetValue']).split(',').map(function(s) { return s.trim(); });
+        return targets.some(function(target) { return managedLdaps.indexOf(target) !== -1; });
+      }
+      return false;
+    });
+  }
 
   return tasks.map(function(t) {
     var completions = completionsByTask[t['ID']] || [];
@@ -615,11 +628,14 @@ function sendExpiryWarnings() {
 // ------------------------------------------------------------
 // TRACK MISSING AGENTS (Manager Only)
 // ------------------------------------------------------------
-function getPendingAgentsForTask(taskId) {
+function getPendingAgentsForTask(taskId, managedLdaps) {
   var task = findRow('Tasks', 'ID', taskId);
   if (!task) return { success: false, error: 'Task not found' };
 
   var allAgents = getSheetData('Agents');
+  if (managedLdaps) {
+    allAgents = allAgents.filter(function(a) { return managedLdaps.indexOf(a['LDAP']) !== -1; });
+  }
   var targetAgents = [];
 
   // 1. Determine who SHOULD complete this task
