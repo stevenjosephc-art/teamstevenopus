@@ -612,7 +612,8 @@ function initScheduleView() {
   SC.currentDate = months[d.getMonth()] + '-' + d.getDate();
   SC.selectedLdap = '';
 
-  if (APP.session && APP.session.role === 'manager') {
+  var role = APP.session ? APP.session.role : 'agent';
+  if (role === 'manager' || role === 'supervisor') {
     document.getElementById('sc-agent-select').style.display = 'inline-block';
     google.script.run
       .withSuccessHandler(function(agents) {

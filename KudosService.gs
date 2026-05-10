@@ -86,15 +86,20 @@ function submitKudos(formData, ldap) {
 // GET KUDOS QUEUE (manager)
 // ------------------------------------------------------------
 
-function getKudosQueue() {
+function getKudosQueue(managedLdaps) {
   var rows = getSheetData('Kudos');
   rows.sort(function(a, b) {
     return new Date(a['SubmittedAt']) - new Date(b['SubmittedAt']); // oldest first
   });
 
-  var pending = rows.filter(function(r) { return r['Status'] === 'Pending'; });
-  var reviewed = rows.filter(function(r) { return r['Status'] !== 'Pending'; })
-    .slice(0, 20); // last 20 reviewed
+  var pending = rows.filter(function(r) {
+    if (managedLdaps && managedLdaps.indexOf(r['LDAP']) === -1) return false;
+    return r['Status'] === 'Pending';
+  });
+  var reviewed = rows.filter(function(r) {
+    if (managedLdaps && managedLdaps.indexOf(r['LDAP']) === -1) return false;
+    return r['Status'] !== 'Pending';
+  }).slice(0, 20); // last 20 reviewed
 
   return {
     pending: pending.map(formatKudosRow),
@@ -221,11 +226,15 @@ function getKudosStats(ldap) {
 // TEAM ANALYTICS (manager)
 // ------------------------------------------------------------
 
-function getTeamAnalytics() {
-  var cached = getCached('team_analytics');
+function getTeamAnalytics(managedLdaps) {
+  var cacheKey = 'team_analytics' + (managedLdaps ? '_' + Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, managedLdaps.join(',')).map(function(b) { return (b & 0xFF).toString(16); }).join('') : '');
+  var cached = getCached(cacheKey);
   if (cached) return cached;
 
   var agents = getSheetData('Agents');
+  if (managedLdaps) {
+    agents = agents.filter(function(a) { return managedLdaps.indexOf(a['LDAP']) !== -1; });
+  }
   var now = new Date();
   var monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
@@ -312,6 +321,6 @@ function getTeamAnalytics() {
     }
   };
 
-  setCached('team_analytics', result, 300); // 5 minute TTL
+  setCached(cacheKey, result, 300); // 5 minute TTL
   return result;
 }

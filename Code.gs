@@ -63,7 +63,7 @@ function getSessionInfo() {
   
   // Figure out the team name based on role
   var teamName = 'Play Ops';
-  if (role === 'manager') {
+  if (role === 'manager' || role === 'supervisor') {
     var mgrRow = findRow('Managers', 'LDAP', ldap);
     if (mgrRow) teamName = mgrRow['Team'];
   } else if (agent) {
@@ -120,9 +120,20 @@ function clientGetMyProfile() {
 }
 
 function clientGetAgentProfile(ldap) {
-  // Agents can view any public profile; managers can view full profiles
-  var role = getUserRole(getCurrentLdap());
-  return getAgentFullProfile(ldap, role === 'manager');
+  var requesterLdap = getCurrentLdap();
+  var role = getUserRole(requesterLdap);
+
+  if (role === 'manager') return getAgentFullProfile(ldap, true);
+
+  if (role === 'supervisor') {
+    var managed = getManagedLdaps(requesterLdap);
+    if (managed.indexOf(ldap) !== -1 || ldap === requesterLdap) {
+      return getAgentFullProfile(ldap, true);
+    }
+  }
+
+  // Default to public profile
+  return getAgentFullProfile(ldap, false);
 }
 
 // --- Kudos ---
@@ -139,56 +150,69 @@ function clientMarkNotificationsRead() {
   return markAllNotificationsRead(getCurrentLdap());
 }
 
-// --- Manager-only functions ---
+// --- Supervisor/Manager functions ---
 function clientCreateTask(taskData) {
-  requireManager();
+  requireSupervisor();
   return createTask(taskData, getCurrentLdap());
 }
 
 function clientUpdateTask(taskId, taskData) {
-  requireManager();
+  requireSupervisor();
   return updateTask(taskId, taskData, getCurrentLdap());
 }
 
 function clientGetKudosQueue() {
-  requireManager();
-  return getKudosQueue();
+  requireSupervisor();
+  var managedLdaps = getManagedLdaps(getCurrentLdap());
+  return getKudosQueue(managedLdaps);
 }
 
 function clientReviewKudos(kudosId, decision, note) {
-  requireManager();
+  requireSupervisor();
   return reviewKudos(kudosId, decision, note, getCurrentLdap());
 }
 
 function clientAddDemerit(demeritData) {
-  requireManager();
+  requireSupervisor();
+  // Ensure supervisor can only add demerit to their team
+  var managedLdaps = getManagedLdaps(getCurrentLdap());
+  if (managedLdaps && managedLdaps.indexOf(demeritData.ldap) === -1) {
+    throw new Error('Unauthorized: You can only add demerits to your own team.');
+  }
   return addDemerit(demeritData, getCurrentLdap());
 }
 
 function clientGetTeamAnalytics() {
-  requireManager();
-  return getTeamAnalytics();
+  requireSupervisor();
+  var managedLdaps = getManagedLdaps(getCurrentLdap());
+  return getTeamAnalytics(managedLdaps);
 }
 
 function clientGetAgentLookup(ldap) {
-  requireManager();
+  requireSupervisor();
+  var managedLdaps = getManagedLdaps(getCurrentLdap());
+  if (managedLdaps && managedLdaps.indexOf(ldap) === -1 && ldap !== getCurrentLdap()) {
+    return getAgentFullProfile(ldap, false); // Public view only
+  }
   return getAgentFullProfile(ldap, true);
 }
 
 function clientGetAllAgents() {
-  requireManager();
-  return getAllAgents();
+  requireSupervisor();
+  var managedLdaps = getManagedLdaps(getCurrentLdap());
+  return getAllAgents(managedLdaps);
 }
 
 function clientUpdateAgentDisplayName(ldap, displayName) {
-  requireManager();
+  requireManager(); // Only Manager can edit display names
   return updateAgentDisplayName(ldap, displayName);
 }
 
-// --- Manager: Task Manager list ---
+// --- Supervisor: Task Manager list ---
 function clientGetAllTasks() {
-  requireManager();
-  return getAllTasksForManager();
+  requireSupervisor();
+  var managedLdaps = getManagedLdaps(getCurrentLdap());
+  return getAllTasksForManager(managedLdaps);
 }
 
 // ------------------------------------------------------------
@@ -197,9 +221,15 @@ function clientGetAllTasks() {
 
 function requireManager() {
   var ldap = getCurrentLdap();
-  var role = getUserRole(ldap);
-  if (role !== 'manager') {
+  if (!isManager(ldap)) {
     throw new Error('Unauthorized: manager access required.');
+  }
+}
+
+function requireSupervisor() {
+  var ldap = getCurrentLdap();
+  if (!isSupervisor(ldap)) {
+    throw new Error('Unauthorized: supervisor/manager access required.');
   }
 }
 
@@ -207,16 +237,26 @@ function requireManager() {
 function clientGetMyCsat(ldap, month) {
   var requesterLdap = getCurrentLdap();
   var requesterRole = getUserRole(requesterLdap);
-  var targetLdap = (ldap && requesterRole === 'manager') ? ldap : requesterLdap;
+  var isMgmt = requesterRole === 'manager' || requesterRole === 'supervisor';
+  var targetLdap = (ldap && isMgmt) ? ldap : requesterLdap;
+
+  if (requesterRole === 'supervisor' && targetLdap !== requesterLdap) {
+    var managed = getManagedLdaps(requesterLdap);
+    if (managed.indexOf(targetLdap) === -1) {
+      targetLdap = requesterLdap; // restrict to self
+    }
+  }
+
   return getMyCsatData(targetLdap, month);
 }
 
 function clientGetTeamCsat(month) {
-  requireManager();
+  requireSupervisor();
   return getTeamCsatData(getCurrentLdap(), month);
 }
 
 function clientGetAllTeamsCsat(month) {
+  requireManager(); // Strictly Manager only
   return getAllTeamsCsatData(month);
 }
 
@@ -531,12 +571,22 @@ function warmCsatCache() {
 function clientGetAgentCoaching(ldap, month) {
   var requesterLdap = getCurrentLdap();
   var requesterRole = getUserRole(requesterLdap);
-  var targetLdap = (ldap && requesterRole === 'manager') ? ldap : requesterLdap;
+  var isMgmt = requesterRole === 'manager' || requesterRole === 'supervisor';
+  var targetLdap = (ldap && isMgmt) ? ldap : requesterLdap;
+
+  // If supervisor, check if agent is in their team
+  if (requesterRole === 'supervisor' && targetLdap !== requesterLdap) {
+    var managed = getManagedLdaps(requesterLdap);
+    if (managed.indexOf(targetLdap) === -1) {
+       targetLdap = requesterLdap; // restricted to self
+    }
+  }
+
   return getAgentCsatCoaching(targetLdap, month);
 }
 
 function clientGetTeamCoaching(month) {
-  requireManager();
+  requireSupervisor();
   return getTeamCsatCoaching(getCurrentLdap(), month);
 }
 
@@ -547,20 +597,30 @@ function storeGroqKey() {
 function clientGetAgentSchedule(month, targetLdap) {
   var ldap = getCurrentLdap();
   var role = getUserRole(ldap);
-  var effectiveLdap = (targetLdap && role === 'manager') ? targetLdap : ldap;
+  var isMgmt = role === 'manager' || role === 'supervisor';
+  var effectiveLdap = (targetLdap && isMgmt) ? targetLdap : ldap;
+
+  if (role === 'supervisor' && effectiveLdap !== ldap) {
+    var managed = getManagedLdaps(ldap);
+    if (managed.indexOf(effectiveLdap) === -1) {
+      effectiveLdap = ldap;
+    }
+  }
+
   return getAgentScheduleData(effectiveLdap, month);
 }
 
 function clientGetScheduleAgentList() {
-  requireManager();
-  var agents = getSheetData('Agents');
+  requireSupervisor();
+  var managedLdaps = getManagedLdaps(getCurrentLdap());
+  var agents = getAllAgents(managedLdaps);
   return agents.map(function(a) {
-    return { ldap: a['LDAP'], displayName: a['DisplayName'] || a['LDAP'] };
+    return { ldap: a.ldap, displayName: a.displayName || a.ldap };
   }).filter(function(a) { return a.ldap; });
 }
 
 function clientGetTeamSchedule(dateKey) {
-  requireManager();
+  requireSupervisor();
   return getTeamScheduleData(getCurrentLdap(), dateKey);
 }
 
