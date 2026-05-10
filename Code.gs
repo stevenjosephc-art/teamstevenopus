@@ -325,24 +325,24 @@ function seedConfigSheet() {
   if (sheet.getLastRow() > 1) return; // already seeded
 
   var defaults = [
-    ['PointsRTA', -20],
-    ['PointsQAMarkdown', -15],
-    ['PointsMissedTask', -10],
-    ['PointsAbandonedTask', -5],
-    ['PointsPerfectAttendance', 50],
-    ['PointsKudosValidated', 30],
-    ['PointsFirstToComplete', 10],
-    ['EarlyBonus1Day', 0.10],
-    ['EarlyBonus2PlusDays', 0.20],
-    ['Streak3Bonus', 15],
-    ['Streak5Bonus', 25],
-    ['PointsFloor', 0],
-    ['MonthlyResetDay', 1],
-    ['ExpiryCheckTime', '00:00'],
-    ['AdminEmail', 'stevenjosephc@google.com']
+    {Setting: 'PointsRTA', Value: -20},
+    {Setting: 'PointsQAMarkdown', Value: -15},
+    {Setting: 'PointsMissedTask', Value: -10},
+    {Setting: 'PointsAbandonedTask', Value: -5},
+    {Setting: 'PointsPerfectAttendance', Value: 50},
+    {Setting: 'PointsKudosValidated', Value: 30},
+    {Setting: 'PointsFirstToComplete', Value: 10},
+    {Setting: 'EarlyBonus1Day', Value: 0.10},
+    {Setting: 'EarlyBonus2PlusDays', Value: 0.20},
+    {Setting: 'Streak3Bonus', Value: 15},
+    {Setting: 'Streak5Bonus', Value: 25},
+    {Setting: 'PointsFloor', Value: 0},
+    {Setting: 'MonthlyResetDay', Value: 1},
+    {Setting: 'ExpiryCheckTime', Value: '00:00'},
+    {Setting: 'AdminEmail', Value: 'stevenjosephc@google.com'}
   ];
 
-  defaults.forEach(function(row) { sheet.appendRow(row); });
+  batchAppendRows('Config', defaults);
 }
 
 function seedBadgeDefsSheet() {
@@ -350,20 +350,20 @@ function seedBadgeDefsSheet() {
   if (sheet.getLastRow() > 1) return;
 
   var badges = [
-    ['FIRST_BLOOD', 'First Blood', 'First task ever completed', '', 'first_completion'],
-    ['SPEED_DEMON', 'Speed Demon', 'Complete a task 3+ days before deadline', '', 'early_3days'],
-    ['PERFECTIONIST', 'Perfectionist', '5 consecutive on-time completions', '', 'ontime_streak_5'],
-    ['KUDOS_KING', 'Kudos King/Queen', '3 validated Kudos in a single month', '', 'kudos_3_month'],
-    ['CLEAN_SLATE', 'Clean Slate', 'Full month with zero demerits', '', 'zero_demerits_month'],
-    ['OVERACHIEVER', 'Overachiever', 'Complete 10+ tasks in a single month', '', 'tasks_10_month'],
-    ['STREAK_MASTER', 'Streak Master', '10-task on-time streak', '', 'ontime_streak_10'],
-    ['ACKNOWLEDGED', 'Acknowledged', 'First announcement acknowledgement', '', 'first_acknowledge'],
-    ['VETERAN', 'Veteran', 'Active for 3 consecutive months', '', 'active_3months'],
-    ['LEGEND', 'Legend', 'Reach Legend tier for the first time', '', 'tier_legend'],
-    ['COMEBACK_KID', 'Comeback Kid', 'Reach Gold+ tier after being Bronze the previous month', '', 'comeback_gold']
+    {BadgeID: 'FIRST_BLOOD', BadgeName: 'First Blood', Description: 'First task ever completed', SVGIcon: '', Trigger: 'first_completion'},
+    {BadgeID: 'SPEED_DEMON', BadgeName: 'Speed Demon', Description: 'Complete a task 3+ days before deadline', SVGIcon: '', Trigger: 'early_3days'},
+    {BadgeID: 'PERFECTIONIST', BadgeName: 'Perfectionist', Description: '5 consecutive on-time completions', SVGIcon: '', Trigger: 'ontime_streak_5'},
+    {BadgeID: 'KUDOS_KING', BadgeName: 'Kudos King/Queen', Description: '3 validated Kudos in a single month', SVGIcon: '', Trigger: 'kudos_3_month'},
+    {BadgeID: 'CLEAN_SLATE', BadgeName: 'Clean Slate', Description: 'Full month with zero demerits', SVGIcon: '', Trigger: 'zero_demerits_month'},
+    {BadgeID: 'OVERACHIEVER', BadgeName: 'Overachiever', Description: 'Complete 10+ tasks in a single month', SVGIcon: '', Trigger: 'tasks_10_month'},
+    {BadgeID: 'STREAK_MASTER', BadgeName: 'Streak Master', Description: '10-task on-time streak', SVGIcon: '', Trigger: 'ontime_streak_10'},
+    {BadgeID: 'ACKNOWLEDGED', BadgeName: 'Acknowledged', Description: 'First announcement acknowledgement', SVGIcon: '', Trigger: 'first_acknowledge'},
+    {BadgeID: 'VETERAN', BadgeName: 'Veteran', Description: 'Active for 3 consecutive months', SVGIcon: '', Trigger: 'active_3months'},
+    {BadgeID: 'LEGEND', BadgeName: 'Legend', Description: 'Reach Legend tier for the first time', SVGIcon: '', Trigger: 'tier_legend'},
+    {BadgeID: 'COMEBACK_KID', BadgeName: 'Comeback Kid', Description: 'Reach Gold+ tier after being Bronze the previous month', SVGIcon: '', Trigger: 'comeback_gold'}
   ];
 
-  badges.forEach(function(row) { sheet.appendRow(row); });
+  batchAppendRows('BadgeDefs', badges);
 }
 
 function seedAgentsSheet() {
@@ -378,14 +378,29 @@ function seedAgentsSheet() {
   ];
 
   var domain = '@google.com';
-  agents.forEach(function(ldap) {
-    sheet.appendRow([ldap, ldap + domain, 'Chat', 'Cebu', 'Play Ops', 'stevenjosephc']);
+  var rowObjs = agents.map(function(ldap) {
+    return {
+      LDAP: ldap,
+      Email: ldap + domain,
+      DisplayName: '',
+      Channel: 'Chat',
+      Site: 'Cebu',
+      Workgroup: 'Play Ops',
+      TeamLead: 'stevenjosephc'
+    };
   });
+
+  batchAppendRows('Agents', rowObjs);
 
   // Seed manager
   var managerSheet = getSheet('Managers');
   if (managerSheet.getLastRow() < 2) {
-    managerSheet.appendRow(['stevenjosephc', 'stevenjosephc@google.com', 'manager', 'Team Steven']);
+    batchAppendRows('Managers', [{
+      LDAP: 'stevenjosephc',
+      Email: 'stevenjosephc@google.com',
+      Role: 'manager',
+      Team: 'Team Steven'
+    }]);
   }
 }
 function testTaskManager() {
@@ -437,6 +452,7 @@ function deletePlayOpsTask(taskId) {
   for (var i = 1; i < data.length; i++) {
     if (data[i][0] === taskId) {
       sheet.deleteRow(i + 1); // +1 because sheet rows are 1-indexed
+      clearSheetDataCache('Tasks');
       return { success: true };
     }
   }
@@ -465,6 +481,7 @@ function clientSubmitFeedback(type, text) {
     
     // Log the feedback into the sheet
     sheet.appendRow([timestamp, ldap, type, text, 'New']);
+    clearSheetDataCache('Feedback');
     
     return { success: true };
   } catch (e) {

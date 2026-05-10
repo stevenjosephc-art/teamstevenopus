@@ -8,16 +8,27 @@
 // ------------------------------------------------------------
 
 function createNotification(ldap, type, message) {
-  var id = generateNotificationId();
-  appendRow('Notifications', {
-    ID: id,
-    LDAP: ldap,
-    Type: type,
-    Message: message,
-    IsRead: false,
-    CreatedAt: now()
+  return createNotifications([{ ldap: ldap, type: type, message: message }])[0];
+}
+
+function createNotifications(notifications) {
+  if (!notifications || notifications.length === 0) return [];
+
+  var ids = generateIds('Notifications', 'NOTIF', notifications.length);
+
+  var rowObjs = notifications.map(function(n, index) {
+    return {
+      ID: ids[index],
+      LDAP: n.ldap,
+      Type: n.type,
+      Message: n.message,
+      IsRead: false,
+      CreatedAt: now()
+    };
   });
-  return id;
+
+  batchAppendRows('Notifications', rowObjs);
+  return ids;
 }
 
 function getNotifications(ldap) {
