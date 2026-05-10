@@ -473,7 +473,16 @@ function getTeamCsatData(managerLdap, selectedMonth) {
       delta:           csatDelta(lAgg.overall, lPrv.overall),
       trendData:       trendData,
       status:          csatStatus(lAgg.overall),
-      caseLog:         []
+      caseLog:         curRows.filter(function(r) { return r.ldap === l && r.satisfaction !== null; }).map(function(r) {
+        return {
+          caseId:       r.caseId,
+          channel:      r.channel,
+          symptom:      r.symptom,
+          csatScore:    r.csatScore,
+          csatComment:  r.csatComment,
+          satisfaction: r.satisfaction
+        };
+      })
     };
   }).sort(function(a, b) {
     if (a.overall === null) return 1;

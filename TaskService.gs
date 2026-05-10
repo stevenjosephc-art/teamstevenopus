@@ -63,7 +63,7 @@ function updateTask(taskId, taskData, updatedBy) {
 // GET ALL TASKS (manager task manager view)
 // ------------------------------------------------------------
 
-function getAllTasksForManager() {
+function getAllTasksForManager(managedLdaps) {
   var tasks = getSheetData('Tasks');
   var allCompletions = getSheetData('Completions');
 
@@ -74,6 +74,19 @@ function getAllTasksForManager() {
     if (!completionsByTask[tid]) completionsByTask[tid] = [];
     completionsByTask[tid].push(c);
   });
+
+  // If supervisor, filter tasks they created or targeted at their team
+  if (managedLdaps) {
+    tasks = tasks.filter(function(t) {
+      if (t['TargetType'] === 'team' || t['TargetType'] === 'announcement') return true;
+      if (t['TargetType'] === 'specific' && managedLdaps.indexOf(t['TargetValue']) !== -1) return true;
+      if (t['TargetType'] === 'group') {
+        var targets = String(t['TargetValue']).split(',').map(function(s) { return s.trim(); });
+        return targets.some(function(target) { return managedLdaps.indexOf(target) !== -1; });
+      }
+      return false;
+    });
+  }
 
   return tasks.map(function(t) {
     var completions = completionsByTask[t['ID']] || [];
@@ -103,16 +116,20 @@ function getAllTasksForManager() {
 function getHomepageTasks(ldap) {
   var allTasks = getSheetData('Tasks');
   var myCompletions = findRows('Completions', 'LDAP', ldap);
-  var completedTaskIds = myCompletions
-    .filter(function(c) { return c['CompletedAt']; })
-    .map(function(c) { return c['TaskID']; });
-  var claimedTaskIds = myCompletions
-    .filter(function(c) { return c['ClaimedAt'] && !c['CompletedAt']; })
-    .map(function(c) { return c['TaskID']; });
+
+  var completedTaskIds = [];
+  var claimedTaskIds = [];
+  myCompletions.forEach(function(c) {
+    if (c['CompletedAt']) completedTaskIds.push(c['TaskID']);
+    else if (c['ClaimedAt']) claimedTaskIds.push(c['TaskID']);
+  });
+
+  // Load agent data once for visibility check optimization
+  var agent = findRow('Agents', 'LDAP', ldap);
 
   // Filter to tasks visible to this agent
   var visible = allTasks.filter(function(t) {
-    return isTaskVisibleTo(t, ldap) && t['Status'] !== 'Expired';
+    return isTaskVisibleToOptimized(t, ldap, agent, completedTaskIds) && t['Status'] !== 'Expired';
   });
 
   // Enrich each task with agent-specific status
@@ -175,20 +192,33 @@ function getTaskDetail(taskId, ldap) {
   var task = findRow('Tasks', 'ID', taskId);
   if (!task) return null;
 
-  if (!isTaskVisibleTo(task, ldap)) return null;
-
   var myCompletions = findRows('Completions', 'LDAP', ldap);
-  var completedTaskIds = myCompletions.filter(function(c) { return c['CompletedAt']; }).map(function(c) { return c['TaskID']; });
-  var claimedTaskIds = myCompletions.filter(function(c) { return c['ClaimedAt'] && !c['CompletedAt']; }).map(function(c) { return c['TaskID']; });
+  var completedTaskIds = [];
+  var claimedTaskIds = [];
+  myCompletions.forEach(function(c) {
+    if (c['CompletedAt']) completedTaskIds.push(c['TaskID']);
+    else if (c['ClaimedAt']) claimedTaskIds.push(c['TaskID']);
+  });
+
+  var agent = findRow('Agents', 'LDAP', ldap);
+  if (!isTaskVisibleToOptimized(task, ldap, agent, completedTaskIds)) return null;
 
   var enriched = enrichTask(task, ldap, completedTaskIds, claimedTaskIds);
 
   // Team completion history (who else completed it)
-  var allCompletions = findRows('Completions', 'TaskID', taskId).filter(function(c) { return c['CompletedAt']; });
-  enriched.completionHistory = allCompletions.map(function(c) {
+  var allCompletionsForTask = findRows('Completions', 'TaskID', taskId).filter(function(c) { return c['CompletedAt']; });
+
+  // Pre-load agents to avoid findRow in loop
+  var agentsData = getSheetData('Agents');
+  var agentsMap = {};
+  agentsData.forEach(function(a) { agentsMap[a.LDAP] = a; });
+
+  enriched.completionHistory = allCompletionsForTask.map(function(c) {
+    var a = agentsMap[c['LDAP']];
+    var dName = (a && a['DisplayName']) ? a['DisplayName'].trim() : c['LDAP'].toLowerCase();
     return {
       ldap: c['LDAP'],
-      displayName: formatDisplayName(c['LDAP']),
+      displayName: dName,
       completedAt: formatDate(c['CompletedAt']),
       totalPoints: c['TotalPoints'],
       photoUrl: getMomaPhotoUrl(c['LDAP'])
@@ -415,12 +445,18 @@ function searchTasks(query, ldap) {
 
   var allTasks = getSheetData('Tasks');
   var myCompletions = findRows('Completions', 'LDAP', ldap);
-  var completedTaskIds = myCompletions.filter(function(c) { return c['CompletedAt']; }).map(function(c) { return c['TaskID']; });
-  var claimedTaskIds = myCompletions.filter(function(c) { return c['ClaimedAt'] && !c['CompletedAt']; }).map(function(c) { return c['TaskID']; });
+  var completedTaskIds = [];
+  var claimedTaskIds = [];
+  myCompletions.forEach(function(c) {
+    if (c['CompletedAt']) completedTaskIds.push(c['TaskID']);
+    else if (c['ClaimedAt']) claimedTaskIds.push(c['TaskID']);
+  });
+
+  var agent = findRow('Agents', 'LDAP', ldap);
 
   return allTasks
     .filter(function(t) {
-      return isTaskVisibleTo(t, ldap) &&
+      return isTaskVisibleToOptimized(t, ldap, agent, completedTaskIds) &&
         t['Status'] !== 'Expired' &&
         (t['Title'].toLowerCase().indexOf(q) !== -1 ||
          t['Description'].toLowerCase().indexOf(q) !== -1 ||
@@ -436,23 +472,32 @@ function searchTasks(query, ldap) {
 // ------------------------------------------------------------
 
 function isTaskVisibleTo(task, ldap) {
+  var agent = findRow('Agents', 'LDAP', ldap);
+  return isTaskVisibleToOptimized(task, ldap, agent);
+}
+
+function isTaskVisibleToOptimized(task, ldap, agent, completedTaskIds) {
   var type = task['TargetType'];
   if (type === 'team') return true;
   if (type === 'announcement') {
     // Only visible if not already acknowledged
+    if (completedTaskIds) {
+      return completedTaskIds.indexOf(task['ID']) === -1;
+    }
     var existing = findRows('Completions', 'TaskID', task['ID']).find(function(c) {
       return c['LDAP'] === ldap && c['CompletedAt'];
     });
     return !existing;
   }
-  if (type === 'specific') return task['TargetValue'] === ldap;
+  if (type === 'specific') return String(task['TargetValue']).toLowerCase() === ldap.toLowerCase();
   if (type === 'group') {
     // Force both targets and agent data to lowercase for flawless matching
-    var targets = task['TargetValue'].split(',').map(function(s) { return s.trim().toLowerCase(); });
-    if (targets.indexOf(ldap.toLowerCase()) !== -1) return true;
+    var targets = String(task['TargetValue']).split(',').map(function(s) { return s.trim().toLowerCase(); });
+    var ldapLower = ldap.toLowerCase();
+    if (targets.indexOf(ldapLower) !== -1) return true;
     
-    var agent = findRow('Agents', 'LDAP', ldap);
-    return agent && agent['Workgroup'] && targets.indexOf(agent['Workgroup'].toLowerCase()) !== -1;
+    if (agent && agent['Workgroup'] && targets.indexOf(agent['Workgroup'].toLowerCase()) !== -1) return true;
+    if (agent && agent['TeamLead'] && targets.indexOf(agent['TeamLead'].toLowerCase()) !== -1) return true;
   }
   return false;
 }
@@ -532,9 +577,14 @@ function notifyNewTask(taskId, taskData) {
       .map(function(a) { return a['LDAP']; });
   }
 
-  agents.forEach(function(ldap) {
-    createNotification(ldap, 'new_task', 'New task available: "' + taskData.title + '" — ' + (taskData.basePoints || 10) + ' pts');
+  var notifications = agents.map(function(ldap) {
+    return {
+      ldap: ldap,
+      type: 'new_task',
+      message: 'New task available: "' + taskData.title + '" — ' + (taskData.basePoints || 10) + ' pts'
+    };
   });
+  createNotifications(notifications);
 }
 
 // ------------------------------------------------------------
@@ -544,6 +594,9 @@ function notifyNewTask(taskId, taskData) {
 function sendExpiryWarnings() {
   var completions = getSheetData('Completions');
   var tasks = getSheetData('Tasks');
+  var allNotifications = getSheetData('Notifications');
+
+  var newNotifications = [];
 
   completions.forEach(function(c) {
     if (!c['ClaimedAt'] || c['CompletedAt']) return;
@@ -554,24 +607,35 @@ function sendExpiryWarnings() {
     var hrs = hoursUntil(task['Deadline']);
     if (hrs > 0 && hrs <= 24) {
       // Check we haven't already warned them
-      var alreadyWarned = findRows('Notifications', 'LDAP', c['LDAP']).some(function(n) {
-        return n['Type'] === 'expiry_warning' && n['Message'].indexOf(c['TaskID']) !== -1;
+      var alreadyWarned = allNotifications.some(function(n) {
+        return n['LDAP'] === c['LDAP'] && n['Type'] === 'expiry_warning' && n['Message'].indexOf(c['TaskID']) !== -1;
       });
+
       if (!alreadyWarned) {
-        createNotification(c['LDAP'], 'expiry_warning',
-          '"' + task['Title'] + '" expires in ' + Math.round(hrs) + ' hours! Complete it now.');
+        newNotifications.push({
+          ldap: c['LDAP'],
+          type: 'expiry_warning',
+          message: '"' + task['Title'] + '" expires in ' + Math.round(hrs) + ' hours! Complete it now. (Task ID: ' + c['TaskID'] + ')'
+        });
       }
     }
   });
+
+  if (newNotifications.length > 0) {
+    createNotifications(newNotifications);
+  }
 }
 // ------------------------------------------------------------
 // TRACK MISSING AGENTS (Manager Only)
 // ------------------------------------------------------------
-function getPendingAgentsForTask(taskId) {
+function getPendingAgentsForTask(taskId, managedLdaps) {
   var task = findRow('Tasks', 'ID', taskId);
   if (!task) return { success: false, error: 'Task not found' };
 
   var allAgents = getSheetData('Agents');
+  if (managedLdaps) {
+    allAgents = allAgents.filter(function(a) { return managedLdaps.indexOf(a['LDAP']) !== -1; });
+  }
   var targetAgents = [];
 
   // 1. Determine who SHOULD complete this task

@@ -580,6 +580,11 @@ body.dark-mode .tier-badge::after, body.dark-mode .badge-icon-wrap::after {
         <span>Help & FAQs</span>
       </div>
 
+      <div class="nav-item" data-view="concerns" onclick="navigate('concerns')">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 12h-2v-2h2v2zm0-4h-2V6h2v4z"/></svg>
+        <span>Submit Concerns</span>
+      </div>
+
       <div class="nav-item" onclick="openFeedbackModal()">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7zm2.85 11.1l-.85.6V16h-4v-2.3l-.85-.6C7.8 12.16 7 10.63 7 9c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.63-.8 3.16-2.15 4.1z"/></svg>
         <span>Submit Feedback</span>
@@ -1093,6 +1098,7 @@ body.dark-mode .tier-badge::after, body.dark-mode .badge-icon-wrap::after {
       <div class="view" id="view-demerit-entry"></div>
       <div class="view" id="view-analytics"></div>
       <div class="view" id="view-agent-lookup"></div>
+      <div class="view" id="view-concerns"></div>
     </div>
   </div>
 </div>
@@ -1236,7 +1242,8 @@ var VIEW_TITLES = {
   'analytics':     'Team Analytics',
   'agent-lookup':  'Agent Lookup',
   'csat':          'CSAT Dashboard',
-  'schedule':      'Schedule'
+  'schedule':      'Schedule',
+  'concerns':      'Submit Concerns'
 };
 
 // ── Boot ───────────────────────────────────────────────────
@@ -1400,8 +1407,13 @@ function applySession(session) {
   headerAvatar.style.padding = '0';
   headerAvatar.style.overflow = 'hidden';
 
-  if (session.role === 'manager') {
+  if (session.role === 'manager' || session.role === 'supervisor') {
     document.getElementById('manager-nav').style.display = 'block';
+    // Optionally change the label to 'Supervisor' if they are one
+    if (session.role === 'supervisor') {
+      var label = document.querySelector('#manager-nav .sidebar-section-label');
+      if (label) label.textContent = 'Supervisor';
+    }
   }
 }
 
@@ -1445,6 +1457,7 @@ function renderView(view, data) {
     case 'agent-lookup':  renderAgentLookup(data); break;
     case 'csat': renderCsatView(); break;
     case 'schedule': renderScheduleView(); break;
+    case 'concerns': renderConcernView(); break;
   }
 }
 
@@ -1981,7 +1994,7 @@ function renderLeaderboard() {
 
 function buildLeaderboardHtml(entries) {
   if (!entries || entries.length === 0) return '<div class="empty-state"><div class="empty-state-icon">🏆</div><h3>No data yet</h3><p>Complete tasks to appear on the leaderboard.</p></div>';
-  var isManager = APP.session && APP.session.role === 'manager';
+  var isManager = APP.session && (APP.session.role === 'manager' || APP.session.role === 'supervisor');
   var myEntry = entries.find(function(e) { return e.isMe; });
 
   // My stats strip
@@ -2547,7 +2560,7 @@ function submitFeedbackAction() {
 // and was never invoked from anywhere in the app. renderAnalytics() handles this view.
 
 function renderTaskManager() {
-  if (!APP.session || APP.session.role !== 'manager') {
+  if (!APP.session || (APP.session.role !== 'manager' && APP.session.role !== 'supervisor')) {
     document.getElementById('view-task-manager').innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔒</div><h3>Access Denied</h3></div>';
     return;
   }
@@ -2756,7 +2769,7 @@ function toggleFeatured(taskId, featured) {
 }
 
 function renderKudosQueue() {
-  if (!APP.session || APP.session.role !== 'manager') return;
+  if (!APP.session || (APP.session.role !== 'manager' && APP.session.role !== 'supervisor')) return;
   setLoading('kudos-queue', 'Loading kudos queue...');
   google.script.run
     .withSuccessHandler(buildKudosQueueHtml)
@@ -2824,7 +2837,7 @@ function promptRejectKudos(kudosId) {
 }
 
 function renderDemeritEntry() {
-  if (!APP.session || APP.session.role !== 'manager') return;
+  if (!APP.session || (APP.session.role !== 'manager' && APP.session.role !== 'supervisor')) return;
   setLoading('demerit-entry', 'Loading...');
   google.script.run
     .withSuccessHandler(function(agents) { document.getElementById('view-demerit-entry').innerHTML = buildDemeritEntryHtml(agents); })
@@ -2885,7 +2898,7 @@ function submitDemerit() {
 }
 
 function renderAnalytics() {
-  if (!APP.session || APP.session.role !== 'manager') return;
+  if (!APP.session || (APP.session.role !== 'manager' && APP.session.role !== 'supervisor')) return;
   setLoading('analytics', 'Crunching numbers...');
   google.script.run
     .withSuccessHandler(buildAnalyticsHtml)
@@ -3005,7 +3018,7 @@ function exportAnalyticsCSV() {
 }
 
 function renderAgentLookup(data) {
-  if (!APP.session || APP.session.role !== 'manager') return;
+  if (!APP.session || (APP.session.role !== 'manager' && APP.session.role !== 'supervisor')) return;
   var el = document.getElementById('view-agent-lookup');
   el.innerHTML = '<div class="section-header mb-16"><div class="section-title">🔍 Agent Lookup</div></div>' +
     '<div class="card mb-24"><div style="display:flex;gap:10px">' +
@@ -3066,6 +3079,7 @@ document.addEventListener('click', function(e) { if (e.target.classList.contains
 
 <?!= include('CsatView') ?>
 <?!= include('ScheduleView') ?>
+<?!= include('ConcernView') ?>
 
 </body>
 </html>

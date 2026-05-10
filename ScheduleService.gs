@@ -41,7 +41,8 @@ function getAgentScheduleData(ldap, month, targetLdap) {
 
 function getTeamScheduleData(managerLdap, dateKey) {
   try {
-    var agents    = getAllAgents();
+    var managedLdaps = getManagedLdaps(managerLdap);
+    var agents    = getAllAgents(managedLdaps);
     var date      = dateKey || getTodayString();
     var allShifts = readShiftsSheet();
 
