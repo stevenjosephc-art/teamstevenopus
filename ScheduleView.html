@@ -408,15 +408,28 @@ function buildScheduleShell() {
     .sc-month-scroll::-webkit-scrollbar-thumb {
       background:var(--sc-gray-300);border-radius:2px;
     }
-    .sc-month-grid { display:flex;gap:7px;min-width:max-content;padding:2px; }
+
+    /* Modern Schedule Grid */
+    .sc-month-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 10px;
+      padding: 5px;
+    }
 
     .sc-day-tile {
-      text-align:center;min-width:68px;
+      text-align:center;
       background:var(--surface,#fff);
       border:1.5px solid var(--sc-gray-200);
       border-radius:var(--sc-radius-md);
-      padding:10px 6px 9px;cursor:pointer;
+      padding:12px 6px;cursor:pointer;
       transition:all .18s cubic-bezier(.34,1.4,.64,1);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 90px;
+      position: relative;
     }
     .sc-day-tile:hover {
       border-color:var(--sc-blue);
@@ -426,6 +439,20 @@ function buildScheduleShell() {
     .sc-day-tile.today {
       border-color:var(--sc-blue);border-width:2px;
       box-shadow:0 0 0 3px var(--sc-blue-light);
+    }
+    .sc-day-tile.is-today-marker::after {
+      content: 'TODAY';
+      position: absolute;
+      top: -8px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--sc-blue);
+      color: white;
+      font-size: 8px;
+      font-weight: 800;
+      padding: 2px 6px;
+      border-radius: 4px;
+      letter-spacing: 0.5px;
     }
     .sc-day-tile.is-vl  { background:var(--sc-blue-light);border-color:transparent; }
     .sc-day-tile.is-mvl { background:var(--sc-yellow-light,rgba(242,153,0,.10));border-color:transparent; }
@@ -556,6 +583,26 @@ function buildScheduleShell() {
       color:var(--sc-gray-600);font-size:14px;
     }
     .sc-empty-icon { font-size:44px;margin-bottom:14px; }
+
+    /* ── Skeleton loaders ── */
+    .sc-skeleton {
+      background: linear-gradient(90deg, var(--sc-gray-200) 25%, var(--sc-gray-100) 50%, var(--sc-gray-200) 75%);
+      background-size: 200% 100%;
+      animation: sc-shimmer 1.5s infinite;
+      border-radius: 4px;
+    }
+    .sk-card { height: 140px; margin-bottom: 20px; border-radius: 12px; }
+    .sk-tile { height: 90px; border-radius: 8px; }
+    .sk-agent { height: 64px; margin-bottom: 10px; border-radius: 12px; }
+
+    @keyframes sc-shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    @media (max-width: 768px) {
+      .sc-month-grid { grid-template-columns: repeat(4, 1fr); }
+    }
   </style>
 
   <div class="sc-top-bar">
@@ -671,9 +718,28 @@ function switchScheduleTab(tab) {
 }
 
 // ── My Schedule ────────────────────────────────────────────
-function loadMySchedule(month, targetLdap) {
+function showMyScheduleSkeleton() {
+  var tiles = '';
+  for(var i=0; i<31; i++) tiles += '<div class="sc-skeleton sk-tile"></div>';
+
   document.getElementById('sc-panel-my').innerHTML =
-    '<div class="loading-state" style="padding:80px 20px;"><div class="spinner" style="margin-bottom:16px;"></div><span style="font-size:14px;font-weight:500;">Loading schedule...</span></div>';
+    '<div class="sc-skeleton sk-card"></div>' +
+    '<div class="sc-month-card">' +
+      '<div class="sc-month-grid">' + tiles + '</div>' +
+    '</div>';
+}
+
+function showTeamScheduleSkeleton() {
+  var agents = '';
+  for(var i=0; i<8; i++) agents += '<div class="sc-skeleton sk-agent"></div>';
+
+  document.getElementById('sc-panel-team').innerHTML =
+    '<div class="sc-team-header"><div class="sc-skeleton" style="width:150px; height:20px;"></div></div>' +
+    agents;
+}
+
+function loadMySchedule(month, targetLdap) {
+  showMyScheduleSkeleton();
   google.script.run
     .withSuccessHandler(function(data) {
       if (!data || !data.success) {
@@ -694,6 +760,7 @@ function loadMySchedule(month, targetLdap) {
 function renderMySchedule() {
   var data = SC.myData;
   if (!data) return;
+  var todayKey = getTodayKey();
   var dateKey  = SC.currentDate;
   var shiftDay = (data.shiftDays || []).find(function(d) { return d.dateKey === dateKey; });
   var breaks   = (data.breakDays && data.breakDays[dateKey]) ? data.breakDays[dateKey] : [];
@@ -925,8 +992,10 @@ function buildMonthStrip(allDays, breaksByDate, activeDateKey) {
     var isActive = d.dateKey === activeDateKey;
     var breaks   = (breaksByDate && breaksByDate[d.dateKey]) ? breaksByDate[d.dateKey] : [];
 
+    var isToday   = (d.dateKey === todayKey);
     var tileClass = 'sc-day-tile';
     if (isActive) tileClass += ' today';
+    if (isToday)  tileClass += ' is-today-marker';
     if (d.type === 'VL')  tileClass += ' is-vl';
     if (d.type === 'MVL') tileClass += ' is-mvl';
     if (d.type === 'OFF' && !isActive) tileClass += ' is-off';
@@ -988,8 +1057,7 @@ function buildMonthStrip(allDays, breaksByDate, activeDateKey) {
 
 // ── Team Schedule ──────────────────────────────────────────
 function loadTeamSchedule(dateKey) {
-  document.getElementById('sc-panel-team').innerHTML =
-    '<div class="loading-state" style="padding:80px 20px;"><div class="spinner" style="margin-bottom:16px;"></div><span style="font-size:14px;font-weight:500;">Loading team schedule...</span></div>';
+  showTeamScheduleSkeleton();
   google.script.run
     .withSuccessHandler(function(data) {
       if (!data || !data.success) {

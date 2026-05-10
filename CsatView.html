@@ -407,6 +407,12 @@ function buildManagerView(d) {
       '</div>' +
       buildAgentScorecard(d.agents) +
     '</div>' +
+
+    // ── Team Case Log ──
+    '<div id="team-caselog-section">' +
+      buildCaseLogTable(d.caseLog, 'Team Cases (Surveyed) — ' + (d.month || '')) +
+    '</div>' +
+
     buildCoachingSection('manager', '', d.month)
   );
 }
@@ -722,7 +728,7 @@ function buildAgentScorecard(agents) {
       '<td style="color:' + (a.dsatCount > 0 ? '#c0392b' : 'var(--color-text-secondary)') + '">' + (a.dsatCount || 0) + '</td>' +
       '<td>' + csatStatusChip(a.status) + '</td>' +
       '<td><button class="btn btn-sm btn-secondary" style="font-size:10px;padding:4px 8px" ' +
-        'onclick="toggleAgentCaseLog(\'' + escHtml(a.ldap) + '\')">' +
+        'onclick="event.stopPropagation(); toggleAgentCaseLog(\'' + escHtml(a.ldap) + '\')">' +
         'Cases' +
       '</button></td>' +
     '</tr>' +

@@ -195,6 +195,11 @@ function getAgentFullProfile(ldap, includeManagerData) {
 // ALL AGENTS (for manager views)
 // ------------------------------------------------------------
 
+function getAllAgents(managedLdaps) {
+  var agentsData = getSheetData('Agents');
+  if (managedLdaps) {
+    agentsData = agentsData.filter(function(a) { return managedLdaps.indexOf(a['LDAP']) !== -1; });
+  }
 function getAllAgents() {
   var agentsData = getSheetData('Agents');
   var managersData = getSheetData('Managers');
