@@ -26,23 +26,26 @@ function renderCsatView() {
     })
     .clientGetAvailableCsatMonths();
 
-  var defaultTab = APP.session && APP.session.role === 'manager' ? 'manager' : 'agent';
+  var role = APP.session ? APP.session.role : 'agent';
+  var defaultTab = (role === 'manager' || role === 'supervisor') ? 'manager' : 'agent';
   // switchCsatTab is now called inside the success handler above
 }
 
 function buildCsatShell() {
-  var isManager = APP.session && APP.session.role === 'manager';
+  var role = APP.session ? APP.session.role : 'agent';
+  var isMgmt = role === 'manager' || role === 'supervisor';
+  var isManager = role === 'manager';
 
   var tabs =
     '<div class="csat-tab-row">' +
       csatTab('agent',    '👤', 'My Scores',  true) +
-      (isManager ? csatTab('manager', '📋', 'My Team') : '') +
-      csatTab('allteams', '🌐', 'All Teams') +
+      (isMgmt ? csatTab('manager', '📋', 'My Team') : '') +
+      (isManager ? csatTab('allteams', '🌐', 'All Teams') : '') +
     '</div>';
 
   // Manager agent selector dropdown
   var agentSelector = '';
-  if (isManager) {
+  if (isMgmt) {
     agentSelector =
       '<div id="csat-agent-selector" style="display:none;margin-bottom:14px;padding:12px 16px;' +
       'background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);' +
@@ -90,6 +93,12 @@ function csatTab(id, icon, label, active) {
 }
 
 function switchCsatTab(id) {
+  var role = APP.session ? APP.session.role : 'agent';
+  var isManager = role === 'manager';
+
+  var tabs = ['agent','manager'];
+  if (isManager) tabs.push('allteams');
+
   ['agent','manager','allteams'].forEach(function(t) {
     var panel = document.getElementById('csat-panel-' + t);
     var tab   = document.getElementById('csat-tab-' + t);
@@ -102,9 +111,11 @@ function switchCsatTab(id) {
   // Show/hide agent selector only on My Scores tab for managers
   var selector = document.getElementById('csat-agent-selector');
   if (selector) {
-    selector.style.display = (id === 'agent' && APP.session && APP.session.role === 'manager') ? 'flex' : 'none';
+    var role = APP.session ? APP.session.role : 'agent';
+    var isMgmt = role === 'manager' || role === 'supervisor';
+    selector.style.display = (id === 'agent' && isMgmt) ? 'flex' : 'none';
     // Populate dropdown if empty
-    if (id === 'agent' && APP.session && APP.session.role === 'manager') {
+    if (id === 'agent' && isMgmt) {
       populateCsatAgentDropdown();
     }
   }
@@ -396,6 +407,12 @@ function buildManagerView(d) {
       '</div>' +
       buildAgentScorecard(d.agents) +
     '</div>' +
+
+    // ── Team Case Log ──
+    '<div id="team-caselog-section">' +
+      buildCaseLogTable(d.caseLog, 'Team Cases (Surveyed) — ' + (d.month || '')) +
+    '</div>' +
+
     buildCoachingSection('manager', '', d.month)
   );
 }
@@ -711,7 +728,7 @@ function buildAgentScorecard(agents) {
       '<td style="color:' + (a.dsatCount > 0 ? '#c0392b' : 'var(--color-text-secondary)') + '">' + (a.dsatCount || 0) + '</td>' +
       '<td>' + csatStatusChip(a.status) + '</td>' +
       '<td><button class="btn btn-sm btn-secondary" style="font-size:10px;padding:4px 8px" ' +
-        'onclick="toggleAgentCaseLog(\'' + escHtml(a.ldap) + '\')">' +
+        'onclick="event.stopPropagation(); toggleAgentCaseLog(\'' + escHtml(a.ldap) + '\')">' +
         'Cases' +
       '</button></td>' +
     '</tr>' +

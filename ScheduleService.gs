@@ -11,8 +11,8 @@ var BREAKS_GID     = '1464763579';
 // Header is on row 15 (index 14)
 var SHIFTS_HEADER_ROW = 14;
 
-// Cache TTL in seconds (5 minutes)
-var SCHEDULE_CACHE_TTL = 300;
+// Cache TTL in seconds (15 minutes)
+var SCHEDULE_CACHE_TTL = 900;
 
 // ------------------------------------------------------------
 // PUBLIC — called from Code.gs client functions
@@ -41,14 +41,21 @@ function getAgentScheduleData(ldap, month, targetLdap) {
 
 function getTeamScheduleData(managerLdap, dateKey) {
   try {
-    var agents    = getAllAgents();
+    var managedLdaps = getManagedLdaps(managerLdap);
+    var agents    = getAllAgents(managedLdaps);
     var date      = dateKey || getTodayString();
-    var allShifts = readShiftsSheet();
+
+    // Pre-load all data to avoid O(N^2) loops
+    var shiftsByLdap = getTeamShiftsMap(managedLdaps);
+    var breaksByLdap = getTeamBreaksMap(managedLdaps);
 
     var result = agents.map(function(agent) {
-      var shiftInfo  = getAgentShiftForDate(allShifts, agent.ldap, date);
-      var breakSlots = [];
-      try { breakSlots = readBreaksForAgent(agent.ldap, null).byDate[date] || []; } catch(e) {}
+      var agentLdap = agent.ldap.toLowerCase();
+      var agentShifts = shiftsByLdap[agentLdap] || [];
+      var shiftInfo = agentShifts.find(function(d) { return d.dateKey === date; }) || { type: 'OFF' };
+
+      var breakMap = breaksByLdap[agentLdap] || {};
+      var breakSlots = breakMap[date] || [];
 
       return {
         ldap:        agent.ldap,
@@ -402,4 +409,110 @@ function invalidateScheduleCache() {
   var cache = CacheService.getScriptCache();
   cache.remove('shifts_display_v1');
   cache.remove('breaks_display_v1');
+}
+
+// ------------------------------------------------------------
+// TEAM OPTIMIZATION HELPERS
+// ------------------------------------------------------------
+
+function getTeamShiftsMap(ldaps) {
+  var raw = readShiftsSheet();
+  var headers = raw[SHIFTS_HEADER_ROW];
+  var ldapCol = headers.findIndex(function(h) { return String(h).trim().toUpperCase() === 'LDAP'; });
+
+  var dateCols = [];
+  headers.forEach(function(h, idx) {
+    var str = String(h).trim();
+    var m = str.match(/^([A-Za-z]+)-(\d+)$/);
+    if (m) dateCols.push({ idx: idx, label: str });
+  });
+
+  var map = {};
+  ldaps.forEach(function(l) { map[l.toLowerCase()] = []; });
+
+  for (var r = SHIFTS_HEADER_ROW + 1; r < raw.length; r++) {
+    var rowLdap = String(raw[r][ldapCol] || '').trim().toLowerCase();
+    if (map[rowLdap]) {
+      var agentRow = raw[r];
+      map[rowLdap] = dateCols.map(function(dc) {
+        var val = String(agentRow[dc.idx] || '').trim();
+        var type = 'WORK';
+        var valUp = val.toUpperCase();
+        if (!val || valUp === 'OFF' || valUp === 'RD') type = 'OFF';
+        else if (valUp === 'VL') type = 'VL';
+        else if (valUp === 'MVL' || valUp === 'MWL') type = 'MVL';
+
+        var shiftStart = null, shiftEnd = null;
+        if (type === 'WORK' && val) {
+          shiftStart = normalizeTime(val);
+          if (shiftStart) shiftEnd = addHours(shiftStart, 9);
+        }
+        return { dateKey: dc.label, type: type, shiftStart: shiftStart, shiftEnd: shiftEnd };
+      });
+    }
+  }
+  return map;
+}
+
+function getTeamBreaksMap(ldaps) {
+  var raw = readBreaksSheet();
+  if (!raw || raw.length < 2) return {};
+
+  var headerRowIdx = 0;
+  for (var i = 0; i < Math.min(raw.length, 10); i++) {
+    if (raw[i].some(function(c) { return String(c).trim().toUpperCase() === 'LDAP'; })) {
+      headerRowIdx = i;
+      break;
+    }
+  }
+
+  var headers = raw[headerRowIdx].map(function(h) { return String(h).trim().toUpperCase(); });
+  var ldapIdx = headers.indexOf('LDAP');
+  var timeIdx = headers.indexOf('TIME');
+  var rtaIdx = headers.findIndex(function(h) { return h.includes('RTA') && h.includes('APPROVAL') || h === 'RTA APPROVAL STATUS'; });
+  var remarksIdx = headers.findIndex(function(h) { return (h.includes('TIME') && h.includes('REMARKS')) || h === 'TIME REMARKS'; });
+
+  var map = {};
+  ldaps.forEach(function(l) { map[l.toLowerCase()] = {}; });
+
+  var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  for (var r = headerRowIdx + 1; r < raw.length; r++) {
+    var row = raw[r];
+    var rowLdap = String(row[ldapIdx] || '').trim().toLowerCase();
+    if (!map[rowLdap]) continue;
+
+    var timeVal = String(row[timeIdx] || '').trim();
+    if (!timeVal) continue;
+    var dateObj = new Date(timeVal);
+    if (isNaN(dateObj.getTime())) continue;
+
+    var dateKey = monthNames[dateObj.getMonth()] + '-' + dateObj.getDate();
+    var schedTime = formatTime12h(dateObj);
+    var actualTime = schedTime;
+    var rtaVal = rtaIdx !== -1 ? String(row[rtaIdx] || '').trim() : '';
+    var remarksVal = remarksIdx !== -1 ? String(row[remarksIdx] || '').trim() : '';
+
+    var status = 'No result yet';
+    if (rtaVal) {
+      var rtaLower = rtaVal.toLowerCase();
+      if (rtaLower.includes('adhere')) {
+        status = 'Adhere';
+      } else if (rtaLower.includes('check') || rtaLower.includes('rta')) {
+        status = 'Check RTA';
+        if (remarksVal) {
+          var rd = new Date(remarksVal);
+          actualTime = !isNaN(rd.getTime()) ? formatTime12h(rd) : remarksVal;
+        }
+      }
+    }
+
+    if (!map[rowLdap][dateKey]) map[rowLdap][dateKey] = [];
+    map[rowLdap][dateKey].push({
+      schedTime: schedTime,
+      actualTime: actualTime,
+      status: status
+    });
+  }
+  return map;
 }
