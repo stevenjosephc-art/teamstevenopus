@@ -200,6 +200,8 @@ function getAllAgents(managedLdaps) {
   if (managedLdaps) {
     agentsData = agentsData.filter(function(a) { return managedLdaps.indexOf(a['LDAP']) !== -1; });
   }
+function getAllAgents() {
+  var agentsData = getSheetData('Agents');
   var managersData = getSheetData('Managers');
   var leaderboardData = getSheetData('Leaderboard');
 
