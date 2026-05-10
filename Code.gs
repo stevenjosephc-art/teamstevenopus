@@ -341,7 +341,8 @@ function createAllSheets() {
     'Leaderboard': ['LDAP','Month','MonthlyPoints','AllTimePoints','CurrentStreak','BestStreak','Tier'],
     'Badges': ['LDAP','BadgeID','BadgeName','AwardedAt'],
     'BadgeDefs': ['BadgeID','BadgeName','Description','SVGIcon','Trigger'],
-    'Config': ['Setting','Value']
+    'Config': ['Setting','Value'],
+    'Concerns': ['ID','Timestamp','LDAP','AddressedTo','Type','Nature','Status','Resolution']
   };
 
   Object.keys(schemas).forEach(function(name) {
