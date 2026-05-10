@@ -215,23 +215,6 @@ function clientGetAllTasks() {
   return getAllTasksForManager(managedLdaps);
 }
 
-// --- Concerns ---
-function clientSubmitConcern(concernData) {
-  var ldap = getCurrentLdap();
-  return submitConcern(concernData, ldap);
-}
-
-function clientGetConcerns() {
-  requireSupervisor();
-  var ldap = getCurrentLdap();
-  var managedLdaps = getManagedLdaps(ldap);
-  return getConcerns(managedLdaps, ldap);
-}
-
-function clientGetLeadershipList() {
-  return getLeadershipList();
-}
-
 // ------------------------------------------------------------
 // ROLE GUARD
 // ------------------------------------------------------------
