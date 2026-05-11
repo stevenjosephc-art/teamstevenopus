@@ -94,27 +94,43 @@ function updateStreak(ldap, wasOnTime) {
 
   if (current > best) best = current;
 
-  updateRow('Leaderboard', 'LDAP', ldap, {
-    CurrentStreak: current,
-    BestStreak: best
-  });
-
-  // Streak bonuses
+  var bonus = 0;
+  var bonusMsg = '';
   if (wasOnTime) {
     if (current === 3) {
-      var bonus3 = parseInt(getConfig('Streak3Bonus')) || 15;
-      addPoints(ldap, bonus3, 'Streak bonus (3)');
-      createNotification(ldap, 'streak', '3-task streak! +' + bonus3 + ' bonus points.');
+      bonus = parseInt(getConfig('Streak3Bonus')) || 15;
+      bonusMsg = '3-task streak! +' + bonus + ' bonus points.';
     } else if (current === 5) {
-      var bonus5 = parseInt(getConfig('Streak5Bonus')) || 25;
-      addPoints(ldap, bonus5, 'Streak bonus (5)');
-      createNotification(ldap, 'streak', '5-task streak! +' + bonus5 + ' bonus points.');
+      bonus = parseInt(getConfig('Streak5Bonus')) || 25;
+      bonusMsg = '5-task streak! +' + bonus + ' bonus points.';
     } else if (current > 0 && current % 10 === 0) {
-      // Every 10-streak milestone
-      var bonusMile = parseInt(getConfig('Streak5Bonus')) || 25;
-      addPoints(ldap, bonusMile, 'Streak milestone (' + current + ')');
-      createNotification(ldap, 'streak', current + '-task streak! +' + bonusMile + ' bonus points.');
+      bonus = parseInt(getConfig('Streak5Bonus')) || 25;
+      bonusMsg = current + '-task streak! +' + bonus + ' bonus points.';
     }
+  }
+
+  if (bonus > 0) {
+    var monthly = (row['MonthlyPoints'] || 0) + bonus;
+    var allTime = (row['AllTimePoints'] || 0) + bonus;
+    var tier = getTierForPoints(allTime);
+    var prevTier = row['Tier'];
+
+    updateRow('Leaderboard', 'LDAP', ldap, {
+      CurrentStreak: current,
+      BestStreak: best,
+      MonthlyPoints: monthly,
+      AllTimePoints: allTime,
+      Tier: tier
+    });
+
+    createNotification(ldap, 'streak', bonusMsg);
+    if (tier === 'Legend' && prevTier !== 'Legend') awardBadgeIfNew(ldap, 'LEGEND');
+    checkComebackKid(ldap, prevTier, tier);
+  } else {
+    updateRow('Leaderboard', 'LDAP', ldap, {
+      CurrentStreak: current,
+      BestStreak: best
+    });
   }
 
   return current;
@@ -214,9 +230,18 @@ function checkCleanSlateBadge(ldap, month) {
 function runExpiryCheck() {
   var tasks = getSheetData('Tasks');
   var completions = getSheetData('Completions');
+  var leaderboard = getSheetData('Leaderboard');
+
+  var lbMap = {};
+  leaderboard.forEach(function(r) { lbMap[r.LDAP] = r; });
+
   var rightNow = now();
-  var missedPoints = parseInt(getConfig('PointsMissedTask')) || -10;
-  var abandonedPoints = parseInt(getConfig('PointsAbandonedTask')) || -5;
+  var missedPoints = Math.abs(parseInt(getConfig('PointsMissedTask')) || -10);
+
+  var taskUpdates = {};
+  var completionUpdates = {};
+  var lbUpdates = {};
+  var notifications = [];
 
   tasks.forEach(function(task) {
     if (task['Status'] === 'Expired' || task['Status'] === 'Completed') return;
@@ -233,29 +258,44 @@ function runExpiryCheck() {
     });
 
     if (claimedEntries.length > 0) {
-      // Agents claimed but didn't complete → Missed
       claimedEntries.forEach(function(c) {
-        updateRow('Completions', 'ID', c['ID'], { CompletedAt: '', Type: 'Missed' });
-        deductPoints(c['LDAP'], Math.abs(missedPoints), 'Missed task: ' + taskId);
-        updateStreak(c['LDAP'], false);
-        createNotification(c['LDAP'], 'missed', 'You missed the deadline for task: ' + task['Title'] + '. ' + missedPoints + ' pts deducted.');
-        Logger.log('[Expiry] Missed: ' + c['LDAP'] + ' | Task: ' + taskId);
+        completionUpdates[c['ID']] = { CompletedAt: '', Type: 'Missed' };
+
+        var ldap = c['LDAP'];
+        var lbRow = lbMap[ldap];
+        if (lbRow) {
+          var currentMonthly = lbUpdates[ldap] ? lbUpdates[ldap].MonthlyPoints : (lbRow.MonthlyPoints || 0);
+          lbUpdates[ldap] = {
+            MonthlyPoints: applyPointsFloor(currentMonthly - missedPoints),
+            CurrentStreak: 0
+          };
+        }
+
+        notifications.push({
+          ldap: ldap,
+          type: 'missed',
+          message: 'You missed the deadline for task: ' + task['Title'] + '. ' + (-missedPoints) + ' pts deducted.'
+        });
+        Logger.log('[Expiry] Missed: ' + ldap + ' | Task: ' + taskId);
       });
-      updateRow('Tasks', 'ID', taskId, { Status: 'Expired' });
+      taskUpdates[taskId] = { Status: 'Expired' };
 
-    } else if (task['Status'] === 'Published') {
-      // Nobody claimed it — just expire silently
-      updateRow('Tasks', 'ID', taskId, { Status: 'Expired' });
-      Logger.log('[Expiry] Unclaimed expired: ' + taskId);
-
-    } else if (task['Status'] === 'Claimed') {
-      // Safety catch: status says Claimed but no completion row found
-      updateRow('Tasks', 'ID', taskId, { Status: 'Expired' });
+    } else {
+      // Published or Claimed but no completion row — just expire
+      taskUpdates[taskId] = { Status: 'Expired' };
+      if (task['Status'] === 'Published') {
+        Logger.log('[Expiry] Unclaimed expired: ' + taskId);
+      }
     }
   });
 
-  SpreadsheetApp.flush(); // Force database changes instantly
-  invalidateCache(['leaderboard_agent', 'leaderboard_manager', 'team_analytics']); // Nuke stale caches
+  if (Object.keys(taskUpdates).length > 0) batchUpdateRows('Tasks', 'ID', taskUpdates);
+  if (Object.keys(completionUpdates).length > 0) batchUpdateRows('Completions', 'ID', completionUpdates);
+  if (Object.keys(lbUpdates).length > 0) batchUpdateRows('Leaderboard', 'LDAP', lbUpdates);
+  if (notifications.length > 0) createNotifications(notifications);
+
+  SpreadsheetApp.flush();
+  invalidateCache(['leaderboard_agent', 'leaderboard_manager', 'team_analytics']);
   Logger.log('[Expiry Check] Done at ' + formatDateTime(rightNow));
 }
 

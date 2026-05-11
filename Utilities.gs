@@ -13,24 +13,75 @@ function getSheet(name) {
   return sheet;
 }
 
+var _sheetDataCache = {};
+
 function getSheetData(name) {
+  if (_sheetDataCache[name]) return _sheetDataCache[name];
+
   var sheet = getSheet(name);
   var data = sheet.getDataRange().getValues();
-  if (data.length < 2) return [];
+  if (data.length < 2) {
+    _sheetDataCache[name] = [];
+    return [];
+  }
   var headers = data[0];
-  return data.slice(1).map(function(row) {
+  var result = data.slice(1).map(function(row) {
     var obj = {};
     headers.forEach(function(h, i) { obj[h] = row[i]; });
     return obj;
   });
+
+  _sheetDataCache[name] = result;
+  return result;
 }
 
-function getConfig(setting) {
-  var rows = getSheetData('Config');
-  for (var i = 0; i < rows.length; i++) {
-    if (rows[i]['Setting'] === setting) return rows[i]['Value'];
+function getSheetDataCached(name, ttlSeconds) {
+  var cacheKey = 'sheet_data_' + name.toLowerCase();
+  var cached = getCached(cacheKey);
+  if (cached) {
+    _sheetDataCache[name] = cached;
+    return cached;
   }
-  return null;
+
+  var data = getSheetData(name);
+  setCached(cacheKey, data, ttlSeconds || 600); // Default 10 mins
+  return data;
+}
+
+function clearSheetDataCache(name) {
+  if (name) {
+    delete _sheetDataCache[name];
+    invalidateCache(['sheet_data_' + name.toLowerCase()]);
+  } else {
+    _sheetDataCache = {};
+  }
+}
+
+var _configCache = null;
+
+function getConfig(setting) {
+  if (_configCache && _configCache[setting] !== undefined) {
+    return _configCache[setting];
+  }
+
+  // Try script cache
+  var cached = getCached('app_config');
+  if (cached) {
+    _configCache = cached;
+    if (_configCache[setting] !== undefined) return _configCache[setting];
+  }
+
+  // Load from sheet
+  var rows = getSheetData('Config');
+  var config = {};
+  for (var i = 0; i < rows.length; i++) {
+    config[rows[i]['Setting']] = rows[i]['Value'];
+  }
+
+  _configCache = config;
+  setCached('app_config', config, 1800); // 30 min cache
+
+  return config[setting] !== undefined ? config[setting] : null;
 }
 
 // ------------------------------------------------------------
@@ -58,15 +109,24 @@ function generateNotificationId() {
 }
 
 function generateId(sheetName, prefix) {
+  return generateIds(sheetName, prefix, 1)[0];
+}
+
+function generateIds(sheetName, prefix, count) {
   var lock = LockService.getScriptLock();
-  lock.waitLock(10000);
+  lock.waitLock(15000);
   try {
     var sheet = getSheet(sheetName);
     var lastRow = sheet.getLastRow();
-    var count = lastRow < 2 ? 1 : lastRow;
-    var padded = String(count).padStart(4, '0');
+    var startNum = lastRow < 2 ? 1 : lastRow;
     var timestamp = new Date().getTime().toString().slice(-4);
-    return prefix + '-' + padded + '-' + timestamp;
+
+    var ids = [];
+    for (var i = 0; i < count; i++) {
+      var padded = String(startNum + i).padStart(4, '0');
+      ids.push(prefix + '-' + padded + '-' + timestamp);
+    }
+    return ids;
   } finally {
     lock.releaseLock();
   }
@@ -191,11 +251,14 @@ function jsonError(message) {
 // Pass an object with column headers as keys; appends a row in correct column order
 function appendRow(sheetName, rowObj) {
   var sheet = getSheet(sheetName);
-  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var lastCol = sheet.getLastColumn();
+  if (lastCol === 0) return;
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   var row = headers.map(function(h) {
     return rowObj.hasOwnProperty(h) ? rowObj[h] : '';
   });
   sheet.appendRow(row);
+  clearSheetDataCache(sheetName);
 }
 
 // Update a row where a column matches a value
@@ -208,12 +271,15 @@ function updateRow(sheetName, matchCol, matchVal, updates) {
 
   for (var i = 1; i < data.length; i++) {
     if (String(data[i][matchIdx]) === String(matchVal)) {
+      var rowValues = data[i];
       Object.keys(updates).forEach(function(key) {
         var colIdx = headers.indexOf(key);
         if (colIdx !== -1) {
-          sheet.getRange(i + 1, colIdx + 1).setValue(updates[key]);
+          rowValues[colIdx] = updates[key];
         }
       });
+      sheet.getRange(i + 1, 1, 1, headers.length).setValues([rowValues]);
+      clearSheetDataCache(sheetName);
       return true;
     }
   }
@@ -269,7 +335,62 @@ function invalidateCache(keys) {
   try {
     var cache = CacheService.getScriptCache();
     cache.removeAll(keys);
+    // Also clear local cache if app_config is invalidated
+    if (keys.indexOf('app_config') !== -1) _configCache = null;
   } catch(e) {
     Logger.log('[Cache] Invalidate error: ' + e.message);
   }
+}
+
+// ------------------------------------------------------------
+// BATCH HELPERS
+// ------------------------------------------------------------
+
+function batchAppendRows(sheetName, rowObjs) {
+  if (!rowObjs || rowObjs.length === 0) return;
+  var sheet = getSheet(sheetName);
+  var lastCol = sheet.getLastColumn();
+  if (lastCol === 0) throw new Error('Sheet ' + sheetName + ' has no headers.');
+
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+
+  var rows = rowObjs.map(function(rowObj) {
+    return headers.map(function(h) {
+      return rowObj.hasOwnProperty(h) ? rowObj[h] : '';
+    });
+  });
+
+  sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, headers.length).setValues(rows);
+  clearSheetDataCache(sheetName);
+}
+
+function batchUpdateRows(sheetName, matchCol, matchValToUpdates) {
+  var sheet = getSheet(sheetName);
+  var data = sheet.getDataRange().getValues();
+  if (data.length < 2) return false;
+
+  var headers = data[0];
+  var matchIdx = headers.indexOf(matchCol);
+  if (matchIdx === -1) throw new Error('Column not found: ' + matchCol);
+
+  var changed = false;
+  for (var i = 1; i < data.length; i++) {
+    var matchVal = String(data[i][matchIdx]);
+    if (matchValToUpdates.hasOwnProperty(matchVal)) {
+      var updates = matchValToUpdates[matchVal];
+      Object.keys(updates).forEach(function(key) {
+        var colIdx = headers.indexOf(key);
+        if (colIdx !== -1) {
+          data[i][colIdx] = updates[key];
+          changed = true;
+        }
+      });
+    }
+  }
+
+  if (changed) {
+    sheet.getDataRange().setValues(data);
+    clearSheetDataCache(sheetName);
+  }
+  return changed;
 }
