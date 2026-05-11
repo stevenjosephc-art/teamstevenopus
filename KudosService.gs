@@ -86,15 +86,20 @@ function submitKudos(formData, ldap) {
 // GET KUDOS QUEUE (manager)
 // ------------------------------------------------------------
 
-function getKudosQueue() {
+function getKudosQueue(managedLdaps) {
   var rows = getSheetData('Kudos');
   rows.sort(function(a, b) {
     return new Date(a['SubmittedAt']) - new Date(b['SubmittedAt']); // oldest first
   });
 
-  var pending = rows.filter(function(r) { return r['Status'] === 'Pending'; });
-  var reviewed = rows.filter(function(r) { return r['Status'] !== 'Pending'; })
-    .slice(0, 20); // last 20 reviewed
+  var pending = rows.filter(function(r) {
+    if (managedLdaps && managedLdaps.indexOf(r['LDAP']) === -1) return false;
+    return r['Status'] === 'Pending';
+  });
+  var reviewed = rows.filter(function(r) {
+    if (managedLdaps && managedLdaps.indexOf(r['LDAP']) === -1) return false;
+    return r['Status'] !== 'Pending';
+  }).slice(0, 20); // last 20 reviewed
 
   return {
     pending: pending.map(formatKudosRow),
@@ -181,10 +186,14 @@ function reviewKudos(kudosId, decision, note, reviewedBy) {
 
 function notifyManagersNewKudos(agentLdap, caseId) {
   var managers = getSheetData('Managers');
-  managers.forEach(function(m) {
-    createNotification(m['LDAP'], 'new_kudos',
-      formatDisplayName(agentLdap) + ' submitted a Kudos for case ' + caseId + '. Review it in the Kudos Queue.');
+  var notifications = managers.map(function(m) {
+    return {
+      ldap: m['LDAP'],
+      type: 'new_kudos',
+      message: formatDisplayName(agentLdap) + ' submitted a Kudos for case ' + caseId + '. Review it in the Kudos Queue.'
+    };
   });
+  createNotifications(notifications);
 }
 
 // ------------------------------------------------------------
@@ -217,11 +226,15 @@ function getKudosStats(ldap) {
 // TEAM ANALYTICS (manager)
 // ------------------------------------------------------------
 
-function getTeamAnalytics() {
-  var cached = getCached('team_analytics');
+function getTeamAnalytics(managedLdaps) {
+  var cacheKey = 'team_analytics' + (managedLdaps ? '_' + Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, managedLdaps.join(',')).map(function(b) { return (b & 0xFF).toString(16); }).join('') : '');
+  var cached = getCached(cacheKey);
   if (cached) return cached;
 
   var agents = getSheetData('Agents');
+  if (managedLdaps) {
+    agents = agents.filter(function(a) { return managedLdaps.indexOf(a['LDAP']) !== -1; });
+  }
   var now = new Date();
   var monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
@@ -231,26 +244,52 @@ function getTeamAnalytics() {
   var allDemerits = getSheetData('Demerits');
   var allLeaderboard = getSheetData('Leaderboard');
 
+  // Pre-group data by LDAP to avoid nested filters
+  var completionsByLdap = {};
+  allCompletions.forEach(function(c) {
+    if (!completionsByLdap[c.LDAP]) completionsByLdap[c.LDAP] = [];
+    completionsByLdap[c.LDAP].push(c);
+  });
+
+  var kudosByLdap = {};
+  allKudos.forEach(function(k) {
+    if (k.Status === 'Approved') {
+      if (!kudosByLdap[k.LDAP]) kudosByLdap[k.LDAP] = [];
+      kudosByLdap[k.LDAP].push(k);
+    }
+  });
+
+  var demeritsByLdap = {};
+  allDemerits.forEach(function(d) {
+    if (!demeritsByLdap[d.LDAP]) demeritsByLdap[d.LDAP] = [];
+    demeritsByLdap[d.LDAP].push(d);
+  });
+
+  var lbMap = {};
+  allLeaderboard.forEach(function(r) { lbMap[r.LDAP] = r; });
+
   var stats = agents.map(function(a) {
     var ldap = a['LDAP'];
+    if (!ldap) return null;
 
-    var completions = allCompletions.filter(function(c) { return c['LDAP'] === ldap; });
+    var completions = completionsByLdap[ldap] || [];
     var monthlyCompletions = completions.filter(function(c) {
       return c['CompletedAt'] && new Date(c['CompletedAt']) >= monthStart;
     });
-    var kudos = allKudos.filter(function(k) { return k['LDAP'] === ldap && k['Status'] === 'Approved'; });
-    var demerits = allDemerits.filter(function(d) { return d['LDAP'] === ldap; });
+    var kudos = kudosByLdap[ldap] || [];
+    var demerits = demeritsByLdap[ldap] || [];
     var monthlyDemerits = demerits.filter(function(d) {
       return new Date(d['Timestamp']) >= monthStart;
     });
-    var lbRow = allLeaderboard.filter(function(r) { return r['LDAP'] === ldap; })[0] || null;
+    var lbRow = lbMap[ldap] || null;
 
     var doneCompletions = completions.filter(function(c) { return c['CompletedAt']; });
     doneCompletions.sort(function(a, b) { return new Date(b['CompletedAt']) - new Date(a['CompletedAt']); });
 
+    var dName = (a && a.DisplayName) ? a.DisplayName.trim() : ldap.toLowerCase();
     return {
       ldap: ldap,
-      displayName: formatDisplayName(ldap),
+      displayName: dName,
       photoUrl: getMomaPhotoUrl(ldap),
       tier: lbRow ? lbRow['Tier'] : 'Bronze',
       monthlyPoints: lbRow ? (lbRow['MonthlyPoints'] || 0) : 0,
@@ -282,6 +321,6 @@ function getTeamAnalytics() {
     }
   };
 
-  setCached('team_analytics', result, 300); // 5 minute TTL
+  setCached(cacheKey, result, 300); // 5 minute TTL
   return result;
 }

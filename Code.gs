@@ -63,7 +63,7 @@ function getSessionInfo() {
   
   // Figure out the team name based on role
   var teamName = 'Play Ops';
-  if (role === 'manager') {
+  if (role === 'manager' || role === 'supervisor') {
     var mgrRow = findRow('Managers', 'LDAP', ldap);
     if (mgrRow) teamName = mgrRow['Team'];
   } else if (agent) {
@@ -120,9 +120,20 @@ function clientGetMyProfile() {
 }
 
 function clientGetAgentProfile(ldap) {
-  // Agents can view any public profile; managers can view full profiles
-  var role = getUserRole(getCurrentLdap());
-  return getAgentFullProfile(ldap, role === 'manager');
+  var requesterLdap = getCurrentLdap();
+  var role = getUserRole(requesterLdap);
+
+  if (role === 'manager') return getAgentFullProfile(ldap, true);
+
+  if (role === 'supervisor') {
+    var managed = getManagedLdaps(requesterLdap);
+    if (managed.indexOf(ldap) !== -1 || ldap === requesterLdap) {
+      return getAgentFullProfile(ldap, true);
+    }
+  }
+
+  // Default to public profile
+  return getAgentFullProfile(ldap, false);
 }
 
 // --- Kudos ---
@@ -139,56 +150,86 @@ function clientMarkNotificationsRead() {
   return markAllNotificationsRead(getCurrentLdap());
 }
 
-// --- Manager-only functions ---
+// --- Supervisor/Manager functions ---
 function clientCreateTask(taskData) {
-  requireManager();
+  requireSupervisor();
   return createTask(taskData, getCurrentLdap());
 }
 
 function clientUpdateTask(taskId, taskData) {
-  requireManager();
+  requireSupervisor();
   return updateTask(taskId, taskData, getCurrentLdap());
 }
 
 function clientGetKudosQueue() {
-  requireManager();
-  return getKudosQueue();
+  requireSupervisor();
+  var managedLdaps = getManagedLdaps(getCurrentLdap());
+  return getKudosQueue(managedLdaps);
 }
 
 function clientReviewKudos(kudosId, decision, note) {
-  requireManager();
+  requireSupervisor();
   return reviewKudos(kudosId, decision, note, getCurrentLdap());
 }
 
 function clientAddDemerit(demeritData) {
-  requireManager();
+  requireSupervisor();
+  // Ensure supervisor can only add demerit to their team
+  var managedLdaps = getManagedLdaps(getCurrentLdap());
+  if (managedLdaps && managedLdaps.indexOf(demeritData.ldap) === -1) {
+    throw new Error('Unauthorized: You can only add demerits to your own team.');
+  }
   return addDemerit(demeritData, getCurrentLdap());
 }
 
 function clientGetTeamAnalytics() {
-  requireManager();
-  return getTeamAnalytics();
+  requireSupervisor();
+  var managedLdaps = getManagedLdaps(getCurrentLdap());
+  return getTeamAnalytics(managedLdaps);
 }
 
 function clientGetAgentLookup(ldap) {
-  requireManager();
+  requireSupervisor();
+  var managedLdaps = getManagedLdaps(getCurrentLdap());
+  if (managedLdaps && managedLdaps.indexOf(ldap) === -1 && ldap !== getCurrentLdap()) {
+    return getAgentFullProfile(ldap, false); // Public view only
+  }
   return getAgentFullProfile(ldap, true);
 }
 
 function clientGetAllAgents() {
-  requireManager();
-  return getAllAgents();
+  requireSupervisor();
+  var managedLdaps = getManagedLdaps(getCurrentLdap());
+  return getAllAgents(managedLdaps);
 }
 
 function clientUpdateAgentDisplayName(ldap, displayName) {
-  requireManager();
+  requireManager(); // Only Manager can edit display names
   return updateAgentDisplayName(ldap, displayName);
 }
 
-// --- Manager: Task Manager list ---
+// --- Supervisor: Task Manager list ---
 function clientGetAllTasks() {
-  requireManager();
-  return getAllTasksForManager();
+  requireSupervisor();
+  var managedLdaps = getManagedLdaps(getCurrentLdap());
+  return getAllTasksForManager(managedLdaps);
+}
+
+// --- Concerns ---
+function clientSubmitConcern(concernData) {
+  var ldap = getCurrentLdap();
+  return submitConcern(concernData, ldap);
+}
+
+function clientGetConcerns() {
+  requireSupervisor();
+  var ldap = getCurrentLdap();
+  var managedLdaps = getManagedLdaps(ldap);
+  return getConcerns(managedLdaps, ldap);
+}
+
+function clientGetLeadershipList() {
+  return getLeadershipList();
 }
 
 // ------------------------------------------------------------
@@ -197,9 +238,15 @@ function clientGetAllTasks() {
 
 function requireManager() {
   var ldap = getCurrentLdap();
-  var role = getUserRole(ldap);
-  if (role !== 'manager') {
+  if (!isManager(ldap)) {
     throw new Error('Unauthorized: manager access required.');
+  }
+}
+
+function requireSupervisor() {
+  var ldap = getCurrentLdap();
+  if (!isSupervisor(ldap)) {
+    throw new Error('Unauthorized: supervisor/manager access required.');
   }
 }
 
@@ -207,16 +254,26 @@ function requireManager() {
 function clientGetMyCsat(ldap, month) {
   var requesterLdap = getCurrentLdap();
   var requesterRole = getUserRole(requesterLdap);
-  var targetLdap = (ldap && requesterRole === 'manager') ? ldap : requesterLdap;
+  var isMgmt = requesterRole === 'manager' || requesterRole === 'supervisor';
+  var targetLdap = (ldap && isMgmt) ? ldap : requesterLdap;
+
+  if (requesterRole === 'supervisor' && targetLdap !== requesterLdap) {
+    var managed = getManagedLdaps(requesterLdap);
+    if (managed.indexOf(targetLdap) === -1) {
+      targetLdap = requesterLdap; // restrict to self
+    }
+  }
+
   return getMyCsatData(targetLdap, month);
 }
 
 function clientGetTeamCsat(month) {
-  requireManager();
+  requireSupervisor();
   return getTeamCsatData(getCurrentLdap(), month);
 }
 
 function clientGetAllTeamsCsat(month) {
+  requireManager(); // Strictly Manager only
   return getAllTeamsCsatData(month);
 }
 
@@ -301,7 +358,8 @@ function createAllSheets() {
     'Leaderboard': ['LDAP','Month','MonthlyPoints','AllTimePoints','CurrentStreak','BestStreak','Tier'],
     'Badges': ['LDAP','BadgeID','BadgeName','AwardedAt'],
     'BadgeDefs': ['BadgeID','BadgeName','Description','SVGIcon','Trigger'],
-    'Config': ['Setting','Value']
+    'Config': ['Setting','Value'],
+    'Concerns': ['ID','Timestamp','LDAP','AddressedTo','Type','Nature','Status','Resolution']
   };
 
   Object.keys(schemas).forEach(function(name) {
@@ -325,24 +383,24 @@ function seedConfigSheet() {
   if (sheet.getLastRow() > 1) return; // already seeded
 
   var defaults = [
-    ['PointsRTA', -20],
-    ['PointsQAMarkdown', -15],
-    ['PointsMissedTask', -10],
-    ['PointsAbandonedTask', -5],
-    ['PointsPerfectAttendance', 50],
-    ['PointsKudosValidated', 30],
-    ['PointsFirstToComplete', 10],
-    ['EarlyBonus1Day', 0.10],
-    ['EarlyBonus2PlusDays', 0.20],
-    ['Streak3Bonus', 15],
-    ['Streak5Bonus', 25],
-    ['PointsFloor', 0],
-    ['MonthlyResetDay', 1],
-    ['ExpiryCheckTime', '00:00'],
-    ['AdminEmail', 'stevenjosephc@google.com']
+    {Setting: 'PointsRTA', Value: -20},
+    {Setting: 'PointsQAMarkdown', Value: -15},
+    {Setting: 'PointsMissedTask', Value: -10},
+    {Setting: 'PointsAbandonedTask', Value: -5},
+    {Setting: 'PointsPerfectAttendance', Value: 50},
+    {Setting: 'PointsKudosValidated', Value: 30},
+    {Setting: 'PointsFirstToComplete', Value: 10},
+    {Setting: 'EarlyBonus1Day', Value: 0.10},
+    {Setting: 'EarlyBonus2PlusDays', Value: 0.20},
+    {Setting: 'Streak3Bonus', Value: 15},
+    {Setting: 'Streak5Bonus', Value: 25},
+    {Setting: 'PointsFloor', Value: 0},
+    {Setting: 'MonthlyResetDay', Value: 1},
+    {Setting: 'ExpiryCheckTime', Value: '00:00'},
+    {Setting: 'AdminEmail', Value: 'stevenjosephc@google.com'}
   ];
 
-  defaults.forEach(function(row) { sheet.appendRow(row); });
+  batchAppendRows('Config', defaults);
 }
 
 function seedBadgeDefsSheet() {
@@ -350,20 +408,20 @@ function seedBadgeDefsSheet() {
   if (sheet.getLastRow() > 1) return;
 
   var badges = [
-    ['FIRST_BLOOD', 'First Blood', 'First task ever completed', '', 'first_completion'],
-    ['SPEED_DEMON', 'Speed Demon', 'Complete a task 3+ days before deadline', '', 'early_3days'],
-    ['PERFECTIONIST', 'Perfectionist', '5 consecutive on-time completions', '', 'ontime_streak_5'],
-    ['KUDOS_KING', 'Kudos King/Queen', '3 validated Kudos in a single month', '', 'kudos_3_month'],
-    ['CLEAN_SLATE', 'Clean Slate', 'Full month with zero demerits', '', 'zero_demerits_month'],
-    ['OVERACHIEVER', 'Overachiever', 'Complete 10+ tasks in a single month', '', 'tasks_10_month'],
-    ['STREAK_MASTER', 'Streak Master', '10-task on-time streak', '', 'ontime_streak_10'],
-    ['ACKNOWLEDGED', 'Acknowledged', 'First announcement acknowledgement', '', 'first_acknowledge'],
-    ['VETERAN', 'Veteran', 'Active for 3 consecutive months', '', 'active_3months'],
-    ['LEGEND', 'Legend', 'Reach Legend tier for the first time', '', 'tier_legend'],
-    ['COMEBACK_KID', 'Comeback Kid', 'Reach Gold+ tier after being Bronze the previous month', '', 'comeback_gold']
+    {BadgeID: 'FIRST_BLOOD', BadgeName: 'First Blood', Description: 'First task ever completed', SVGIcon: '', Trigger: 'first_completion'},
+    {BadgeID: 'SPEED_DEMON', BadgeName: 'Speed Demon', Description: 'Complete a task 3+ days before deadline', SVGIcon: '', Trigger: 'early_3days'},
+    {BadgeID: 'PERFECTIONIST', BadgeName: 'Perfectionist', Description: '5 consecutive on-time completions', SVGIcon: '', Trigger: 'ontime_streak_5'},
+    {BadgeID: 'KUDOS_KING', BadgeName: 'Kudos King/Queen', Description: '3 validated Kudos in a single month', SVGIcon: '', Trigger: 'kudos_3_month'},
+    {BadgeID: 'CLEAN_SLATE', BadgeName: 'Clean Slate', Description: 'Full month with zero demerits', SVGIcon: '', Trigger: 'zero_demerits_month'},
+    {BadgeID: 'OVERACHIEVER', BadgeName: 'Overachiever', Description: 'Complete 10+ tasks in a single month', SVGIcon: '', Trigger: 'tasks_10_month'},
+    {BadgeID: 'STREAK_MASTER', BadgeName: 'Streak Master', Description: '10-task on-time streak', SVGIcon: '', Trigger: 'ontime_streak_10'},
+    {BadgeID: 'ACKNOWLEDGED', BadgeName: 'Acknowledged', Description: 'First announcement acknowledgement', SVGIcon: '', Trigger: 'first_acknowledge'},
+    {BadgeID: 'VETERAN', BadgeName: 'Veteran', Description: 'Active for 3 consecutive months', SVGIcon: '', Trigger: 'active_3months'},
+    {BadgeID: 'LEGEND', BadgeName: 'Legend', Description: 'Reach Legend tier for the first time', SVGIcon: '', Trigger: 'tier_legend'},
+    {BadgeID: 'COMEBACK_KID', BadgeName: 'Comeback Kid', Description: 'Reach Gold+ tier after being Bronze the previous month', SVGIcon: '', Trigger: 'comeback_gold'}
   ];
 
-  badges.forEach(function(row) { sheet.appendRow(row); });
+  batchAppendRows('BadgeDefs', badges);
 }
 
 function seedAgentsSheet() {
@@ -378,14 +436,29 @@ function seedAgentsSheet() {
   ];
 
   var domain = '@google.com';
-  agents.forEach(function(ldap) {
-    sheet.appendRow([ldap, ldap + domain, 'Chat', 'Cebu', 'Play Ops', 'stevenjosephc']);
+  var rowObjs = agents.map(function(ldap) {
+    return {
+      LDAP: ldap,
+      Email: ldap + domain,
+      DisplayName: '',
+      Channel: 'Chat',
+      Site: 'Cebu',
+      Workgroup: 'Play Ops',
+      TeamLead: 'stevenjosephc'
+    };
   });
+
+  batchAppendRows('Agents', rowObjs);
 
   // Seed manager
   var managerSheet = getSheet('Managers');
   if (managerSheet.getLastRow() < 2) {
-    managerSheet.appendRow(['stevenjosephc', 'stevenjosephc@google.com', 'manager', 'Team Steven']);
+    batchAppendRows('Managers', [{
+      LDAP: 'stevenjosephc',
+      Email: 'stevenjosephc@google.com',
+      Role: 'manager',
+      Team: 'Team Steven'
+    }]);
   }
 }
 function testTaskManager() {
@@ -437,6 +510,7 @@ function deletePlayOpsTask(taskId) {
   for (var i = 1; i < data.length; i++) {
     if (data[i][0] === taskId) {
       sheet.deleteRow(i + 1); // +1 because sheet rows are 1-indexed
+      clearSheetDataCache('Tasks');
       return { success: true };
     }
   }
@@ -465,6 +539,7 @@ function clientSubmitFeedback(type, text) {
     
     // Log the feedback into the sheet
     sheet.appendRow([timestamp, ldap, type, text, 'New']);
+    clearSheetDataCache('Feedback');
     
     return { success: true };
   } catch (e) {
@@ -514,12 +589,22 @@ function warmCsatCache() {
 function clientGetAgentCoaching(ldap, month) {
   var requesterLdap = getCurrentLdap();
   var requesterRole = getUserRole(requesterLdap);
-  var targetLdap = (ldap && requesterRole === 'manager') ? ldap : requesterLdap;
+  var isMgmt = requesterRole === 'manager' || requesterRole === 'supervisor';
+  var targetLdap = (ldap && isMgmt) ? ldap : requesterLdap;
+
+  // If supervisor, check if agent is in their team
+  if (requesterRole === 'supervisor' && targetLdap !== requesterLdap) {
+    var managed = getManagedLdaps(requesterLdap);
+    if (managed.indexOf(targetLdap) === -1) {
+       targetLdap = requesterLdap; // restricted to self
+    }
+  }
+
   return getAgentCsatCoaching(targetLdap, month);
 }
 
 function clientGetTeamCoaching(month) {
-  requireManager();
+  requireSupervisor();
   return getTeamCsatCoaching(getCurrentLdap(), month);
 }
 
@@ -530,20 +615,30 @@ function storeGroqKey() {
 function clientGetAgentSchedule(month, targetLdap) {
   var ldap = getCurrentLdap();
   var role = getUserRole(ldap);
-  var effectiveLdap = (targetLdap && role === 'manager') ? targetLdap : ldap;
+  var isMgmt = role === 'manager' || role === 'supervisor';
+  var effectiveLdap = (targetLdap && isMgmt) ? targetLdap : ldap;
+
+  if (role === 'supervisor' && effectiveLdap !== ldap) {
+    var managed = getManagedLdaps(ldap);
+    if (managed.indexOf(effectiveLdap) === -1) {
+      effectiveLdap = ldap;
+    }
+  }
+
   return getAgentScheduleData(effectiveLdap, month);
 }
 
 function clientGetScheduleAgentList() {
-  requireManager();
-  var agents = getSheetData('Agents');
+  requireSupervisor();
+  var managedLdaps = getManagedLdaps(getCurrentLdap());
+  var agents = getAllAgents(managedLdaps);
   return agents.map(function(a) {
-    return { ldap: a['LDAP'], displayName: a['DisplayName'] || a['LDAP'] };
+    return { ldap: a.ldap, displayName: a.displayName || a.ldap };
   }).filter(function(a) { return a.ldap; });
 }
 
 function clientGetTeamSchedule(dateKey) {
-  requireManager();
+  requireSupervisor();
   return getTeamScheduleData(getCurrentLdap(), dateKey);
 }
 
