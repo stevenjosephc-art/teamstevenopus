@@ -7,13 +7,17 @@
 // ROLE & ACCESS CONTROL
 // ------------------------------------------------------------
 
-// Returns 'manager', 'agent', or null (no access)
+// Returns 'manager', 'supervisor', 'agent', or null (no access)
 function getUserRole(ldap) {
   if (!ldap) return null;
 
-  // Check Managers sheet first
-  var manager = findRow('Managers', 'LDAP', ldap);
-  if (manager) return 'manager';
+  // Check Managers sheet (contains both Managers and Supervisors)
+  var managerRow = findRow('Managers', 'LDAP', ldap);
+  if (managerRow) {
+    var role = String(managerRow['Role']).toLowerCase();
+    if (role === 'manager' || role === 'supervisor') return role;
+    return 'manager'; // fallback
+  }
 
   // Check Agents sheet
   var agent = findRow('Agents', 'LDAP', ldap);
@@ -26,9 +30,34 @@ function isManager(ldap) {
   return getUserRole(ldap) === 'manager';
 }
 
+function isSupervisor(ldap) {
+  var role = getUserRole(ldap);
+  return role === 'supervisor' || role === 'manager';
+}
+
 function isAgent(ldap) {
   var role = getUserRole(ldap);
-  return role === 'agent' || role === 'manager';
+  return role === 'agent' || role === 'supervisor' || role === 'manager';
+}
+
+/**
+ * Returns a list of LDAPs that the given user can manage.
+ * - Manager: Can manage everyone.
+ * - Supervisor: Can only manage agents where TeamLead matches their LDAP.
+ * - Agent: Can manage nobody.
+ */
+function getManagedLdaps(ldap) {
+  var role = getUserRole(ldap);
+  if (role === 'manager') return null; // null means "all"
+
+  if (role === 'supervisor') {
+    var agents = getSheetData('Agents');
+    return agents
+      .filter(function(a) { return String(a['TeamLead']).toLowerCase() === ldap.toLowerCase(); })
+      .map(function(a) { return a['LDAP']; });
+  }
+
+  return [];
 }
 
 // ------------------------------------------------------------
@@ -74,10 +103,20 @@ function getAgentFullProfile(ldap, includeManagerData) {
   var base = getAgentProfile(ldap);
   if (!base) return null;
 
+  // Pre-load necessary data
+  var allBadgeDefs = getSheetData('BadgeDefs');
+  var allTasks = getSheetData('Tasks');
+
+  var badgeDefsMap = {};
+  allBadgeDefs.forEach(function(d) { badgeDefsMap[d.BadgeID] = d; });
+
+  var tasksMap = {};
+  allTasks.forEach(function(t) { tasksMap[t.ID] = t; });
+
   // Badges
   var badgeRows = findRows('Badges', 'LDAP', ldap);
   var badges = badgeRows.map(function(b) {
-    var def = findRow('BadgeDefs', 'BadgeID', b['BadgeID']);
+    var def = badgeDefsMap[b['BadgeID']];
     return {
       badgeId: b['BadgeID'],
       name: b['BadgeName'],
@@ -93,7 +132,7 @@ function getAgentFullProfile(ldap, includeManagerData) {
     return new Date(b['CompletedAt']) - new Date(a['CompletedAt']);
   });
   var recentCompletions = completions.slice(0, 20).map(function(c) {
-    var task = findRow('Tasks', 'ID', c['TaskID']);
+    var task = tasksMap[c['TaskID']];
     return {
       taskId: c['TaskID'],
       taskTitle: task ? task['Title'] : c['TaskID'],
@@ -156,10 +195,42 @@ function getAgentFullProfile(ldap, includeManagerData) {
 // ALL AGENTS (for manager views)
 // ------------------------------------------------------------
 
-function getAllAgents() {
-  var agents = getSheetData('Agents');
-  return agents.map(function(a) {
-    return getAgentProfile(a['LDAP']);
+function getAllAgents(managedLdaps) {
+  var agentsData = getSheetData('Agents');
+  if (managedLdaps) {
+    agentsData = agentsData.filter(function(a) { return managedLdaps.indexOf(a['LDAP']) !== -1; });
+  }
+  var managersData = getSheetData('Managers');
+  var leaderboardData = getSheetData('Leaderboard');
+
+  var lbMap = {};
+  leaderboardData.forEach(function(r) { lbMap[r.LDAP] = r; });
+
+  var mgrMap = {};
+  managersData.forEach(function(m) { mgrMap[m.LDAP] = m; });
+
+  return agentsData.map(function(a) {
+    var ldap = a['LDAP'];
+    if (!ldap) return null;
+
+    var lbRow = lbMap[ldap];
+    var mgrRow = mgrMap[ldap];
+
+    return {
+      ldap: ldap,
+      email: a['Email'] || '',
+      displayName: a['DisplayName'] ? a['DisplayName'].trim() : ldap.toLowerCase(),
+      channel: a['Channel'] || '',
+      site: a['Site'] || '',
+      workgroup: a['Workgroup'] || '',
+      teamLead: a['TeamLead'] || '',
+      role: mgrRow ? String(mgrRow['Role']).toLowerCase() : 'agent',
+      tier: lbRow ? (lbRow['Tier'] || 'Bronze') : 'Bronze',
+      monthlyPoints: lbRow ? (lbRow['MonthlyPoints'] || 0) : 0,
+      allTimePoints: lbRow ? (lbRow['AllTimePoints'] || 0) : 0,
+      currentStreak: lbRow ? (lbRow['CurrentStreak'] || 0) : 0,
+      photoUrl: getMomaPhotoUrl(ldap)
+    };
   }).filter(Boolean);
 }
 
@@ -204,17 +275,26 @@ function getLeaderboard(requestingLdap, role) {
     allDemerits = getSheetData('Demerits');
   }
 
+  // Pre-load agents to avoid individual findRow calls
+  var allAgents = getSheetData('Agents');
+  var agentsMap = {};
+  allAgents.forEach(function(a) { agentsMap[a.LDAP] = a; });
+
   var result = board.map(function(row, index) {
+    var ldap = row['LDAP'];
+    var agent = agentsMap[ldap];
+    var dName = (agent && agent.DisplayName) ? agent.DisplayName.trim() : ldap.toLowerCase();
+
     var entry = {
       rank: index + 1,
-      ldap: row['LDAP'],
-      displayName: formatDisplayName(row['LDAP']),
+      ldap: ldap,
+      displayName: dName,
       tier: row['Tier'] || 'Bronze',
       monthlyPoints: row['MonthlyPoints'] || 0,
       allTimePoints: row['AllTimePoints'] || 0,
       currentStreak: row['CurrentStreak'] || 0,
-      photoUrl: getMomaPhotoUrl(row['LDAP']),
-      isMe: row['LDAP'] === requestingLdap
+      photoUrl: getMomaPhotoUrl(ldap),
+      isMe: ldap === requestingLdap
     };
 
     if (role === 'manager') {
@@ -341,16 +421,106 @@ function runMonthlyReset() {
   var month = getCurrentMonth();
   var prevMonth = getPreviousMonth();
 
+  var leaderboardData = getSheetData('Leaderboard');
+  var completionsData = getSheetData('Completions');
+  var demeritsData = getSheetData('Demerits');
+  var badgesData = getSheetData('Badges');
+  var badgeDefsData = getSheetData('BadgeDefs');
+
+  var leaderboardLdaps = leaderboardData.map(function(r) { return r.LDAP; });
+  var badgesMap = {};
+  badgesData.forEach(function(b) {
+    if (!badgesMap[b.LDAP]) badgesMap[b.LDAP] = [];
+    badgesMap[b.LDAP].push(b.BadgeID);
+  });
+
+  var badgeDefsMap = {};
+  badgeDefsData.forEach(function(d) { badgeDefsMap[d.BadgeID] = d; });
+
+  var monthStart = getMonthStart(prevMonth);
+  var monthEnd = getMonthEnd(prevMonth);
+
+  // Group completions and demerits by LDAP to avoid nested filter (O(N^2))
+  var completionsByLdap = {};
+  completionsData.forEach(function(c) {
+    if (!completionsByLdap[c.LDAP]) completionsByLdap[c.LDAP] = [];
+    completionsByLdap[c.LDAP].push(c);
+  });
+
+  var demeritsByLdap = {};
+  demeritsData.forEach(function(d) {
+    if (!demeritsByLdap[d.LDAP]) demeritsByLdap[d.LDAP] = [];
+    demeritsByLdap[d.LDAP].push(d);
+  });
+
+  var newLeaderboardRows = [];
+  var leaderboardUpdates = {};
+  var newBadgeRows = [];
+  var newNotifications = [];
+
   agents.forEach(function(a) {
     var ldap = a['LDAP'];
-    ensureLeaderboardRow(ldap);
-    checkVeteranBadge(ldap);
-    checkCleanSlateBadge(ldap, prevMonth);
-    updateRow('Leaderboard', 'LDAP', ldap, {
+    if (!ldap) return;
+
+    // 1. Ensure Leaderboard Row
+    if (leaderboardLdaps.indexOf(ldap) === -1) {
+       newLeaderboardRows.push({
+         LDAP: ldap, Month: month, MonthlyPoints: 0, AllTimePoints: 0,
+         CurrentStreak: 0, BestStreak: 0, Tier: 'Bronze'
+       });
+       leaderboardLdaps.push(ldap);
+    }
+
+    // 2. Veteran Badge Check (simplified in-memory)
+    var agentCompletions = completionsByLdap[ldap] || [];
+    var distinctMonths = {};
+    agentCompletions.forEach(function(c) {
+      if (c.CompletedAt) {
+        var d = new Date(c.CompletedAt);
+        distinctMonths[d.getFullYear() + '-' + d.getMonth()] = true;
+      }
+    });
+    if (Object.keys(distinctMonths).length >= 3) {
+      if (!badgesMap[ldap] || badgesMap[ldap].indexOf('VETERAN') === -1) {
+        var def = badgeDefsMap['VETERAN'];
+        if (def) {
+          newBadgeRows.push({ LDAP: ldap, BadgeID: 'VETERAN', BadgeName: def.BadgeName, AwardedAt: now() });
+          newNotifications.push({ ldap: ldap, type: 'badge', message: 'You earned the "' + def.BadgeName + '" badge!' });
+          if (!badgesMap[ldap]) badgesMap[ldap] = [];
+          badgesMap[ldap].push('VETERAN');
+        }
+      }
+    }
+
+    // 3. Clean Slate Badge Check
+    var agentDemerits = demeritsByLdap[ldap] || [];
+    var hasDemeritsInPrevMonth = agentDemerits.some(function(d) {
+      var ts = new Date(d.Timestamp);
+      return ts >= monthStart && ts <= monthEnd;
+    });
+    if (!hasDemeritsInPrevMonth) {
+      if (!badgesMap[ldap] || badgesMap[ldap].indexOf('CLEAN_SLATE') === -1) {
+        var def = badgeDefsMap['CLEAN_SLATE'];
+        if (def) {
+          newBadgeRows.push({ LDAP: ldap, BadgeID: 'CLEAN_SLATE', BadgeName: def.BadgeName, AwardedAt: now() });
+          newNotifications.push({ ldap: ldap, type: 'badge', message: 'You earned the "' + def.BadgeName + '" badge!' });
+          if (!badgesMap[ldap]) badgesMap[ldap] = [];
+          badgesMap[ldap].push('CLEAN_SLATE');
+        }
+      }
+    }
+
+    // 4. Collect Leaderboard Update
+    leaderboardUpdates[ldap] = {
       MonthlyPoints: 0,
       Month: month
-    });
+    };
   });
+
+  if (newLeaderboardRows.length > 0) batchAppendRows('Leaderboard', newLeaderboardRows);
+  if (newBadgeRows.length > 0) batchAppendRows('Badges', newBadgeRows);
+  if (newNotifications.length > 0) createNotifications(newNotifications);
+  batchUpdateRows('Leaderboard', 'LDAP', leaderboardUpdates);
 
   Logger.log('[Monthly Reset] Completed for month: ' + month);
 }

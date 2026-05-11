@@ -1,0 +1,153 @@
+<script>
+// ============================================================
+// ConcernView — Submission Form and Leadership Dashboard
+// ============================================================
+
+function renderConcernForm() {
+  var el = document.getElementById('view-concern-form');
+  el.innerHTML = buildConcernFormShell();
+  loadConcernFormConfig();
+}
+
+function renderConcernDashboard() {
+  var el = document.getElementById('view-concern-dashboard');
+  el.innerHTML = buildConcernDashboardShell();
+  loadConcernDashboard();
+}
+
+// ── AGENT SUBMISSION FORM ──────────────────────────────────────────────────
+
+function buildConcernFormShell() {
+  return '<div style="max-width:600px;margin:0 auto">' +
+    '<div class="section-header mb-16"><div class="section-title">💬 Submit a Concern</div></div>' +
+    '<div class="card">' +
+      '<p style="font-size:14px;color:var(--text-secondary);margin-bottom:20px;">' +
+        'Your concern will be directed to the selected leadership member. Please be specific.' +
+      '</p>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Addressed To *</label>' +
+        '<select class="form-control" id="con-addressed-to">' +
+          '<option value="">Loading leadership list...</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Concern Type *</label>' +
+        '<select class="form-control" id="con-type">' +
+          '<option value="">Select type...</option>' +
+          '<option value="Attendance">Attendance</option>' +
+          '<option value="Productivity">Productivity</option>' +
+          '<option value="Incentive">Incentive</option>' +
+          '<option value="Operations">Operations</option>' +
+          '<option value="Personal">Personal</option>' +
+          '<option value="Schedule">Schedule</option>' +
+          '<option value="Others">Others</option>' +
+        '</select>' +
+      '</div>' +
+      '<div class="form-group">' +
+        '<label class="form-label">Nature of the Concern *</label>' +
+        '<textarea class="form-control" id="con-nature" rows="5" placeholder="Describe your concern in detail..."></textarea>' +
+      '</div>' +
+      '<button class="btn btn-primary btn-full" onclick="submitConcernAction()" id="con-submit-btn">Submit Concern</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function loadConcernFormConfig() {
+  google.script.run
+    .withSuccessHandler(function(list) {
+      var sel = document.getElementById('con-addressed-to');
+      if (!sel) return;
+      var html = '<option value="">Select supervisor or manager...</option>';
+      html += '<option value="Both">Both (My Supervisor & Operations Manager)</option>';
+      (list || []).forEach(function(m) {
+        html += '<option value="' + m.ldap + '">' + escHtml(m.displayName) + ' (' + m.role + ')</option>';
+      });
+      sel.innerHTML = html;
+    })
+    .clientGetLeadershipList();
+}
+
+function submitConcernAction() {
+  var data = {
+    addressedTo: document.getElementById('con-addressed-to').value,
+    type: document.getElementById('con-type').value,
+    nature: document.getElementById('con-nature').value.trim()
+  };
+
+  if (!data.addressedTo || !data.type || !data.nature) {
+    showToast('Please fill in all required fields.', 'error');
+    return;
+  }
+
+  var btn = document.getElementById('con-submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      showToast('Concern submitted successfully (ID: ' + result.id + ')', 'success');
+      renderConcernForm(); // Refresh form
+    })
+    .withFailureHandler(function(e) {
+      showToast('Error: ' + e.message, 'error');
+      btn.disabled = false;
+      btn.textContent = 'Submit Concern';
+    })
+    .clientSubmitConcern(data);
+}
+
+// ── LEADERSHIP DASHBOARD ───────────────────────────────────────────────────
+
+function buildConcernDashboardShell() {
+  return '<div class="section-header mb-16">' +
+    '<div class="section-title">📊 Concerns Tracking Dashboard</div>' +
+    '<div style="display:flex;gap:8px">' +
+      '<button class="btn btn-primary btn-sm" onclick="navigate(\'concern-form\')">+ Submit New</button>' +
+      '<button class="btn btn-secondary btn-sm" onclick="loadConcernDashboard()">↻ Refresh</button>' +
+    '</div>' +
+  '</div>' +
+  '<div id="con-dashboard-content"></div>';
+}
+
+function loadConcernDashboard() {
+  var content = document.getElementById('con-dashboard-content');
+  content.innerHTML = '<div class="loading-state"><div class="spinner"></div><span>Loading concerns...</span></div>';
+
+  google.script.run
+    .withSuccessHandler(function(concerns) {
+      if (!concerns || concerns.length === 0) {
+        content.innerHTML = '<div class="empty-state"><div class="empty-state-icon">✅</div><h3>No concerns found</h3><p>You\'re all caught up!</p></div>';
+        return;
+      }
+      content.innerHTML = buildConcernTable(concerns);
+    })
+    .withFailureHandler(function(e) {
+      content.innerHTML = '<div class="empty-state"><h3>Error loading dashboard</h3><p>' + e.message + '</p></div>';
+    })
+    .clientGetConcerns();
+}
+
+function buildConcernTable(concerns) {
+  // Sort by date newest first
+  concerns.sort(function(a, b) { return new Date(b.Timestamp) - new Date(a.Timestamp); });
+
+  var rows = concerns.map(function(c) {
+    var date = formatDate(c.Timestamp);
+    var statusCls = c.Status === 'New' ? 'text-red font-bold' : 'text-green';
+    return '<div class="lb-row" style="grid-template-columns:140px 100px 120px 120px 1fr 80px">' +
+      '<div style="font-size:12px;color:var(--text-hint)">' + date + '</div>' +
+      '<div style="font-weight:600">' + escHtml(c.LDAP) + '</div>' +
+      '<div style="font-size:12px">' + escHtml(c.Type) + '</div>' +
+      '<div style="font-size:12px">' + escHtml(c.AddressedTo) + '</div>' +
+      '<div style="font-size:13px;color:var(--text-secondary);white-space:normal">' + escHtml(c.Nature) + '</div>' +
+      '<div class="' + statusCls + '" style="font-size:11px;text-transform:uppercase">' + c.Status + '</div>' +
+    '</div>';
+  }).join('');
+
+  return '<div class="leaderboard-table">' +
+    '<div class="lb-header" style="grid-template-columns:140px 100px 120px 120px 1fr 80px">' +
+      '<div>Date</div><div>Agent</div><div>Type</div><div>Addressed To</div><div>Nature</div><div>Status</div>' +
+    '</div>' + rows + '</div>';
+}
+
+</script>
