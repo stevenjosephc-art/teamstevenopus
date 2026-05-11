@@ -450,6 +450,15 @@ function clientGetLeadershipList() {
   }, this, 'clientGetLeadershipList');
 }
 
+function clientUpdateConcern(id, updates) {
+  return executeWithErrorHandling(function() {
+    requireSupervisor();
+    var result = updateConcern(id, updates);
+    auditLog('CONCERN_UPDATED', { concernId: id, updates: updates }, getCurrentLdap());
+    return result;
+  }, this, 'clientUpdateConcern');
+}
+
 // ============================================================
 // ROLE GUARD
 // ============================================================
