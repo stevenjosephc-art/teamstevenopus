@@ -1,10 +1,271 @@
 // ============================================================
 // Utilities.gs — Shared helpers for Play Ops Store
+// Enhanced with error handling, validation, and monitoring
 // ============================================================
 
-// ------------------------------------------------------------
+// ============================================================
+// ERROR HANDLING & RECOVERY
+// ============================================================
+
+/**
+ * Global error handler wrapper for safe execution
+ * @param {Function} fn - Function to execute
+ * @param {Object} context - Context to execute in
+ * @param {string} errorContext - Error context for logging
+ */
+function executeWithErrorHandling(fn, context, errorContext) {
+  try {
+    return fn.call(context || this);
+  } catch(e) {
+    Logger.log('[ERROR] ' + errorContext + ': ' + e.message);
+    Logger.log('[STACK] ' + e.stack);
+    logErrorToSheet({
+      error: e.message,
+      stack: e.stack,
+      context: errorContext,
+      timestamp: new Date(),
+      user: getCurrentLdap()
+    });
+    throw e;
+  }
+}
+
+/**
+ * Retry logic with exponential backoff
+ * @param {Function} fn - Function to retry
+ * @param {number} maxRetries - Maximum number of attempts
+ * @param {number} initialDelayMs - Initial delay in milliseconds
+ */
+function executeWithRetry(fn, maxRetries, initialDelayMs) {
+  maxRetries = maxRetries || 3;
+  initialDelayMs = initialDelayMs || 1000;
+  
+  var delayMs = initialDelayMs;
+  
+  for (var i = 0; i < maxRetries; i++) {
+    try {
+      return fn();
+    } catch(error) {
+      if (i === maxRetries - 1) {
+        Logger.log('[RETRY] Final attempt failed: ' + error.message);
+        throw error;
+      }
+      
+      Logger.log('[RETRY] Attempt ' + (i + 1) + '/' + maxRetries + ' failed. Retrying in ' + delayMs + 'ms...');
+      Utilities.sleep(delayMs);
+      delayMs *= 2; // Exponential backoff
+    }
+  }
+}
+
+/**
+ * Log errors to ErrorLog sheet for monitoring
+ */
+function logErrorToSheet(errorData) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var errorSheet = ss.getSheetByName('ErrorLog');
+    
+    if (!errorSheet) {
+      errorSheet = ss.insertSheet('ErrorLog');
+      errorSheet.appendRow(['Timestamp', 'Error', 'Stack', 'Context', 'LDAP', 'View']);
+      errorSheet.setFrozenRows(1);
+    }
+    
+    if (errorSheet.getLastRow() < 1000) { // Prevent unbounded growth
+      errorSheet.appendRow([
+        errorData.timestamp || new Date(),
+        errorData.error || 'Unknown',
+        errorData.stack || '',
+        errorData.context || '',
+        errorData.user || 'unknown',
+        errorData.view || ''
+      ]);
+    }
+  } catch(e) {
+    Logger.log('[ERROR LOG FAILED] ' + e.message);
+  }
+}
+
+// ============================================================
+// AUDIT LOGGING
+// ============================================================
+
+/**
+ * Log important actions for audit trail
+ */
+function auditLog(action, details, ldap) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var auditSheet = ss.getSheetByName('AuditLog');
+    
+    if (!auditSheet) {
+      auditSheet = ss.insertSheet('AuditLog');
+      auditSheet.appendRow(['Timestamp', 'Action', 'LDAP', 'Details', 'IPAddress']);
+      auditSheet.setFrozenRows(1);
+    }
+    
+    if (auditSheet.getLastRow() < 5000) { // Prevent unbounded growth
+      auditSheet.appendRow([
+        new Date().toISOString(),
+        action,
+        ldap || getCurrentLdap(),
+        JSON.stringify(details),
+        Session.getActiveUser().getEmail()
+      ]);
+    }
+    
+    Logger.log('[AUDIT] ' + action + ' by ' + (ldap || getCurrentLdap()));
+  } catch(e) {
+    Logger.log('[AUDIT LOG FAILED] ' + e.message);
+  }
+}
+
+// ============================================================
+// VALIDATION HELPERS
+// ============================================================
+
+/**
+ * Validate task input data
+ */
+function validateTaskInput(taskData) {
+  var errors = [];
+  
+  if (!taskData.title || taskData.title.trim().length < 3) {
+    errors.push('Title must be at least 3 characters');
+  }
+  
+  if (!taskData.category) {
+    errors.push('Category is required');
+  }
+  
+  if (isNaN(taskData.basePoints) || parseInt(taskData.basePoints) < 1) {
+    errors.push('Points must be a positive number');
+  }
+  
+  if (taskData.deadline && isNaN(new Date(taskData.deadline).getTime())) {
+    errors.push('Invalid deadline format');
+  }
+  
+  if (errors.length > 0) {
+    throw new Error(errors.join('; '));
+  }
+  
+  return true;
+}
+
+/**
+ * Validate kudos submission
+ */
+function validateKudosInput(kudosData) {
+  var errors = [];
+  
+  if (!kudosData.ldap || kudosData.ldap.trim().length === 0) {
+    errors.push('Agent LDAP is required');
+  }
+  
+  if (!kudosData.whyKudos || kudosData.whyKudos.trim().length < 10) {
+    errors.push('Kudos reason must be at least 10 characters');
+  }
+  
+  if (errors.length > 0) {
+    throw new Error(errors.join('; '));
+  }
+  
+  return true;
+}
+
+/**
+ * Sanitize HTML input to prevent XSS
+ */
+function sanitizeInput(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// ============================================================
+// PERFORMANCE MONITORING
+// ============================================================
+
+/**
+ * Track function execution time
+ */
+function measurePerformance(functionName, fn) {
+  var startTime = new Date().getTime();
+  var result = fn();
+  var duration = new Date().getTime() - startTime;
+  
+  Logger.log('[PERF] ' + functionName + ': ' + duration + 'ms');
+  
+  // Store in cache for monitoring
+  var perfKey = 'perf_' + functionName;
+  var perfData = getCached(perfKey) || { times: [], count: 0 };
+  perfData.times.push(duration);
+  perfData.count++;
+  perfData.avgTime = perfData.times.reduce(function(a, b) { return a + b; }) / perfData.times.length;
+  
+  // Keep only last 100 measurements
+  if (perfData.times.length > 100) {
+    perfData.times.shift();
+  }
+  
+  setCached(perfKey, perfData, 3600);
+  
+  return result;
+}
+
+/**
+ * Get performance metrics for monitoring
+ */
+function getPerformanceMetrics(functionName) {
+  return getCached('perf_' + functionName) || null;
+}
+
+// ============================================================
+// RATE LIMITING
+// ============================================================
+
+/**
+ * Simple rate limiter to prevent abuse
+ */
+var RateLimiter = {
+  limits: {},
+  
+  isAllowed: function(key, maxRequests, windowMs) {
+    maxRequests = maxRequests || 50;
+    windowMs = windowMs || 60000;
+    
+    var now = Date.now();
+    if (!this.limits[key]) {
+      this.limits[key] = [];
+    }
+    
+    var recentRequests = this.limits[key].filter(function(time) {
+      return now - time < windowMs;
+    });
+    
+    if (recentRequests.length >= maxRequests) {
+      return false;
+    }
+    
+    recentRequests.push(now);
+    this.limits[key] = recentRequests;
+    return true;
+  },
+  
+  reset: function(key) {
+    delete this.limits[key];
+  }
+};
+
+// ============================================================
 // SHEET ACCESS
-// ------------------------------------------------------------
+// ============================================================
 
 function getSheet(name) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -70,9 +331,9 @@ function getConfig(setting) {
   return config[setting] !== undefined ? config[setting] : null;
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // ID GENERATION
-// ------------------------------------------------------------
+// ============================================================
 
 function generateTaskId() {
   return generateId('Tasks', 'TASK');
@@ -118,9 +379,9 @@ function generateIds(sheetName, prefix, count) {
   }
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // DATE & TIME HELPERS
-// ------------------------------------------------------------
+// ============================================================
 
 function now() {
   return new Date();
@@ -176,9 +437,9 @@ function daysEarly(completedAt, deadline) {
   return businessDays;
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // POINTS & BONUS HELPERS
-// ------------------------------------------------------------
+// ============================================================
 
 function calcEarlyBonus(basePoints, completedAt, deadline) {
   var days = daysEarly(completedAt, deadline);
@@ -197,9 +458,9 @@ function applyPointsFloor(points) {
   return Math.max(points, floor);
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // SESSION & AUTH HELPERS
-// ------------------------------------------------------------
+// ============================================================
 
 function getSessionEmail() {
   return Session.getActiveUser().getEmail();
@@ -214,9 +475,9 @@ function getCurrentLdap() {
   return getLdapFromEmail(getSessionEmail());
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // RESPONSE HELPERS (for doGet / doPost JSON responses)
-// ------------------------------------------------------------
+// ============================================================
 
 function jsonSuccess(data) {
   return ContentService
@@ -230,9 +491,9 @@ function jsonError(message) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // APPEND ROW HELPER
-// ------------------------------------------------------------
+// ============================================================
 
 // Pass an object with column headers as keys; appends a row in correct column order
 function appendRow(sheetName, rowObj) {
@@ -289,9 +550,9 @@ function findRows(sheetName, matchCol, matchVal) {
   });
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // CACHE HELPERS
-// ------------------------------------------------------------
+// ============================================================
 
 function getCached(key) {
   try {
@@ -328,9 +589,9 @@ function invalidateCache(keys) {
   }
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // BATCH HELPERS
-// ------------------------------------------------------------
+// ============================================================
 
 function batchAppendRows(sheetName, rowObjs) {
   if (!rowObjs || rowObjs.length === 0) return;
