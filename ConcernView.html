@@ -127,25 +127,41 @@ function loadConcernDashboard(filter) {
   if (!content) return;
   content.innerHTML = '<div class="loading-state"><div class="spinner"></div><span>Loading concerns...</span></div>';
 
+  // Timeout safety: if server doesn't respond in 30s
+  var timeoutId = setTimeout(function() {
+    if (content.querySelector('.loading-state')) {
+      content.innerHTML = '<div class="empty-state"><h3>Request timed out</h3><p>The server is taking too long to respond. Please try again or refresh the page.</p><button class="btn btn-secondary" onclick="loadConcernDashboard()">Retry</button></div>';
+    }
+  }, 30000);
+
   google.script.run
     .withSuccessHandler(function(concerns) {
-      window._allConcerns = concerns;
-      renderConcernFilterBar(concerns, filter);
+      clearTimeout(timeoutId);
+      try {
+        console.log('Concerns loaded:', concerns);
+        window._allConcerns = concerns || [];
+        renderConcernFilterBar(window._allConcerns, filter);
 
-      var filtered = concerns;
-      if (filter !== 'All') {
-        filtered = concerns.filter(function(c) { return c.Status === filter; });
-      }
+        var filtered = window._allConcerns;
+        if (filter !== 'All') {
+          filtered = window._allConcerns.filter(function(c) { return c.Status === filter; });
+        }
 
-      if (!filtered || filtered.length === 0) {
-        content.innerHTML = '<div class="empty-state"><div class="empty-state-icon">✅</div><h3>No ' + filter.toLowerCase() + ' concerns found</h3><p>You\'re all caught up!</p></div>';
-        return;
+        if (!filtered || filtered.length === 0) {
+          content.innerHTML = '<div class="empty-state"><div class="empty-state-icon">✅</div><h3>No ' + filter.toLowerCase() + ' concerns found</h3><p>You\'re all caught up!</p></div>';
+          return;
+        }
+        content.innerHTML = buildConcernTable(filtered);
+      } catch (err) {
+        console.error('Error rendering concerns:', err);
+        content.innerHTML = '<div class="empty-state"><h3>Display Error</h3><p>' + err.message + '</p></div>';
       }
-      content.innerHTML = buildConcernTable(filtered);
     })
     .withFailureHandler(function(e) {
+      clearTimeout(timeoutId);
       console.error('Server error loading concerns:', e);
-      content.innerHTML = '<div class="empty-state"><h3>Error loading dashboard</h3><p>' + e.message + '</p></div>';
+      var msg = e && e.message ? e.message : 'Unknown server error';
+      content.innerHTML = '<div class="empty-state"><h3>Error loading dashboard</h3><p>' + msg + '</p><button class="btn btn-secondary" onclick="loadConcernDashboard()">Retry</button></div>';
     })
     .clientGetConcerns();
 }
