@@ -37,6 +37,11 @@ function getConcerns(managedLdaps, currentUserLdap) {
       var submitterLdap = (c.LDAP || '').toLowerCase();
       var addressedTo = (c.AddressedTo || '').toLowerCase();
 
+  if (role === 'supervisor') {
+    return allConcerns.filter(function(c) {
+      var submitterLdap = (c.LDAP || '').toLowerCase();
+      var addressedTo = (c.AddressedTo || '').toLowerCase();
+
       // Rule: Can see if submitter is direct report OR explicitly addressed to them
       var isDirectReport = reports.indexOf(submitterLdap) !== -1;
       var isAddressedToMe = addressedTo === userLdap || addressedTo === 'both';

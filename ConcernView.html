@@ -129,25 +129,19 @@ function loadConcernDashboard(filter) {
 
   google.script.run
     .withSuccessHandler(function(concerns) {
-      try {
-        console.log('Concerns loaded:', concerns ? concerns.length : 0);
-        window._allConcerns = concerns || [];
-        renderConcernFilterBar(window._allConcerns, filter);
+      window._allConcerns = concerns;
+      renderConcernFilterBar(concerns, filter);
 
-        var filtered = window._allConcerns;
-        if (filter !== 'All') {
-          filtered = window._allConcerns.filter(function(c) { return c.Status === filter; });
-        }
-
-        if (!filtered || filtered.length === 0) {
-          content.innerHTML = '<div class="empty-state"><div class="empty-state-icon">✅</div><h3>No ' + filter.toLowerCase() + ' concerns found</h3><p>You\'re all caught up!</p></div>';
-          return;
-        }
-        content.innerHTML = buildConcernTable(filtered);
-      } catch (err) {
-        console.error('Error rendering concerns:', err);
-        content.innerHTML = '<div class="empty-state"><h3>Display Error</h3><p>' + err.message + '</p></div>';
+      var filtered = concerns;
+      if (filter !== 'All') {
+        filtered = concerns.filter(function(c) { return c.Status === filter; });
       }
+
+      if (!filtered || filtered.length === 0) {
+        content.innerHTML = '<div class="empty-state"><div class="empty-state-icon">✅</div><h3>No ' + filter.toLowerCase() + ' concerns found</h3><p>You\'re all caught up!</p></div>';
+        return;
+      }
+      content.innerHTML = buildConcernTable(filtered);
     })
     .withFailureHandler(function(e) {
       console.error('Server error loading concerns:', e);
