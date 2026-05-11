@@ -439,8 +439,11 @@ function clientGetConcerns() {
   return executeWithErrorHandling(function() {
     requireSupervisor();
     var ldap = getCurrentLdap();
+    Logger.log('[clientGetConcerns] Fetching concerns for ' + ldap);
     var managedLdaps = getManagedLdaps(ldap);
-    return getConcerns(managedLdaps, ldap);
+    var result = getConcerns(managedLdaps, ldap);
+    Logger.log('[clientGetConcerns] Found ' + (result ? result.length : 0) + ' concerns.');
+    return result;
   }, this, 'clientGetConcerns');
 }
 

@@ -2,7 +2,19 @@
 // ConcernService.gs — Backend for Submit Concerns module
 // ============================================================
 
+function ensureConcernsSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Concerns');
+  if (!sheet) {
+    sheet = ss.insertSheet('Concerns');
+    sheet.appendRow(['ID','Timestamp','LDAP','AddressedTo','Type','Nature','Status','Resolution']);
+    sheet.getRange(1, 1, 1, 8).setFontWeight('bold').setBackground('#4285F4').setFontColor('#FFFFFF');
+  }
+  return sheet;
+}
+
 function submitConcern(concernData, ldap) {
+  ensureConcernsSheet();
   var id = generateId('Concerns', 'CONC');
   var timestamp = new Date();
 
@@ -24,6 +36,7 @@ function submitConcern(concernData, ldap) {
 }
 
 function getConcerns(managedLdaps, currentUserLdap) {
+  ensureConcernsSheet();
   var role = getUserRole(currentUserLdap);
   var allConcerns = getSheetData('Concerns');
   var userLdap = (currentUserLdap || '').toLowerCase();
@@ -37,11 +50,6 @@ function getConcerns(managedLdaps, currentUserLdap) {
       var submitterLdap = (c.LDAP || '').toLowerCase();
       var addressedTo = (c.AddressedTo || '').toLowerCase();
 
-  if (role === 'supervisor') {
-    return allConcerns.filter(function(c) {
-      var submitterLdap = (c.LDAP || '').toLowerCase();
-      var addressedTo = (c.AddressedTo || '').toLowerCase();
-
       // Rule: Can see if submitter is direct report OR explicitly addressed to them
       var isDirectReport = reports.indexOf(submitterLdap) !== -1;
       var isAddressedToMe = addressedTo === userLdap || addressedTo === 'both';
@@ -52,19 +60,26 @@ function getConcerns(managedLdaps, currentUserLdap) {
   }
 
   // Sanitize for client: Date objects cannot be passed via google.script.run
-  // We explicitly convert any Date object to ISO string to prevent serialization errors.
-  return filtered.map(function(c) {
+  // We explicitly convert any Date object or non-primitive to string to prevent serialization errors.
+  var sanitized = filtered.map(function(c) {
     var item = {};
     for (var key in c) {
       var val = c[key];
-      if (val instanceof Date) {
+      // Robust Date check
+      if (val && Object.prototype.toString.call(val) === '[object Date]') {
         item[key] = val.toISOString();
+      } else if (val !== null && typeof val === 'object') {
+        // Fallback for any other objects
+        item[key] = String(val);
       } else {
         item[key] = val;
       }
     }
     return item;
   });
+
+  Logger.log('[Concerns] Returning ' + sanitized.length + ' concerns to client.');
+  return sanitized;
 }
 
 function notifyLeadershipOfConcern(id, data, agentLdap) {
