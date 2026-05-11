@@ -428,11 +428,13 @@ function getTeamShiftsMap(ldaps) {
   });
 
   var map = {};
-  ldaps.forEach(function(l) { map[l.toLowerCase()] = []; });
+  if (ldaps) {
+    ldaps.forEach(function(l) { map[l.toLowerCase()] = []; });
+  }
 
   for (var r = SHIFTS_HEADER_ROW + 1; r < raw.length; r++) {
     var rowLdap = String(raw[r][ldapCol] || '').trim().toLowerCase();
-    if (map[rowLdap]) {
+    if (!ldaps || map[rowLdap]) {
       var agentRow = raw[r];
       map[rowLdap] = dateCols.map(function(dc) {
         var val = String(agentRow[dc.idx] || '').trim();
@@ -473,14 +475,17 @@ function getTeamBreaksMap(ldaps) {
   var remarksIdx = headers.findIndex(function(h) { return (h.includes('TIME') && h.includes('REMARKS')) || h === 'TIME REMARKS'; });
 
   var map = {};
-  ldaps.forEach(function(l) { map[l.toLowerCase()] = {}; });
+  if (ldaps) {
+    ldaps.forEach(function(l) { map[l.toLowerCase()] = {}; });
+  }
 
   var monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   for (var r = headerRowIdx + 1; r < raw.length; r++) {
     var row = raw[r];
     var rowLdap = String(row[ldapIdx] || '').trim().toLowerCase();
-    if (!map[rowLdap]) continue;
+    if (ldaps && !map[rowLdap]) continue;
+    if (!map[rowLdap]) map[rowLdap] = {};
 
     var timeVal = String(row[timeIdx] || '').trim();
     if (!timeVal) continue;

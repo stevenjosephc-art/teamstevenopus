@@ -3,18 +3,16 @@
 // ConcernView — Submission Form and Leadership Dashboard
 // ============================================================
 
-function renderConcernView() {
-  var el = document.getElementById('view-concerns');
-  var role = APP.session ? APP.session.role : 'agent';
-  var isMgmt = role === 'manager' || role === 'supervisor';
+function renderConcernForm() {
+  var el = document.getElementById('view-concern-form');
+  el.innerHTML = buildConcernFormShell();
+  loadConcernFormConfig();
+}
 
-  if (isMgmt) {
-    el.innerHTML = buildConcernDashboardShell();
-    loadConcernDashboard();
-  } else {
-    el.innerHTML = buildConcernFormShell();
-    loadConcernFormConfig();
-  }
+function renderConcernDashboard() {
+  var el = document.getElementById('view-concern-dashboard');
+  el.innerHTML = buildConcernDashboardShell();
+  loadConcernDashboard();
 }
 
 // ── AGENT SUBMISSION FORM ──────────────────────────────────────────────────
@@ -88,7 +86,7 @@ function submitConcernAction() {
   google.script.run
     .withSuccessHandler(function(result) {
       showToast('Concern submitted successfully (ID: ' + result.id + ')', 'success');
-      renderConcernView(); // Refresh form
+      renderConcernForm(); // Refresh form
     })
     .withFailureHandler(function(e) {
       showToast('Error: ' + e.message, 'error');
@@ -103,7 +101,10 @@ function submitConcernAction() {
 function buildConcernDashboardShell() {
   return '<div class="section-header mb-16">' +
     '<div class="section-title">📊 Concerns Tracking Dashboard</div>' +
-    '<button class="btn btn-secondary btn-sm" onclick="loadConcernDashboard()">↻ Refresh</button>' +
+    '<div style="display:flex;gap:8px">' +
+      '<button class="btn btn-primary btn-sm" onclick="navigate(\'concern-form\')">+ Submit New</button>' +
+      '<button class="btn btn-secondary btn-sm" onclick="loadConcernDashboard()">↻ Refresh</button>' +
+    '</div>' +
   '</div>' +
   '<div id="con-dashboard-content"></div>';
 }

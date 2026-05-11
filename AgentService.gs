@@ -200,8 +200,6 @@ function getAllAgents(managedLdaps) {
   if (managedLdaps) {
     agentsData = agentsData.filter(function(a) { return managedLdaps.indexOf(a['LDAP']) !== -1; });
   }
-function getAllAgents() {
-  var agentsData = getSheetData('Agents');
   var managersData = getSheetData('Managers');
   var leaderboardData = getSheetData('Leaderboard');
 
@@ -226,7 +224,7 @@ function getAllAgents() {
       site: a['Site'] || '',
       workgroup: a['Workgroup'] || '',
       teamLead: a['TeamLead'] || '',
-      role: mgrRow ? 'manager' : 'agent',
+      role: mgrRow ? String(mgrRow['Role']).toLowerCase() : 'agent',
       tier: lbRow ? (lbRow['Tier'] || 'Bronze') : 'Bronze',
       monthlyPoints: lbRow ? (lbRow['MonthlyPoints'] || 0) : 0,
       allTimePoints: lbRow ? (lbRow['AllTimePoints'] || 0) : 0,
