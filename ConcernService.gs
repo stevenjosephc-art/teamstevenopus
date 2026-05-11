@@ -26,34 +26,54 @@ function submitConcern(concernData, ldap) {
 function getConcerns(managedLdaps, currentUserLdap) {
   var role = getUserRole(currentUserLdap);
   var allConcerns = getSheetData('Concerns');
+  var userLdap = (currentUserLdap || '').toLowerCase();
+  var reports = (managedLdaps || []).map(function(l) { return l.toLowerCase(); });
 
+  var filtered;
   if (role === 'manager') {
-    return allConcerns;
-  }
+    filtered = allConcerns;
+  } else if (role === 'supervisor') {
+    filtered = allConcerns.filter(function(c) {
+      var submitterLdap = (c.LDAP || '').toLowerCase();
+      var addressedTo = (c.AddressedTo || '').toLowerCase();
 
-  if (role === 'supervisor') {
-    return allConcerns.filter(function(c) {
       // Rule: Can see if submitter is direct report OR explicitly addressed to them
-      var isDirectReport = managedLdaps && managedLdaps.indexOf(c.LDAP) !== -1;
-      var isAddressedToMe = c.AddressedTo === currentUserLdap || c.AddressedTo === 'Both';
+      var isDirectReport = reports.indexOf(submitterLdap) !== -1;
+      var isAddressedToMe = addressedTo === userLdap || addressedTo === 'both';
       return isDirectReport || isAddressedToMe;
     });
+  } else {
+    return []; // Agents shouldn't be calling this
   }
 
-  return []; // Agents shouldn't be calling this
+  // Sanitize for client: Date objects cannot be passed via google.script.run
+  // We explicitly convert any Date object to ISO string to prevent serialization errors.
+  return filtered.map(function(c) {
+    var item = {};
+    for (var key in c) {
+      var val = c[key];
+      if (val instanceof Date) {
+        item[key] = val.toISOString();
+      } else {
+        item[key] = val;
+      }
+    }
+    return item;
+  });
 }
 
 function notifyLeadershipOfConcern(id, data, agentLdap) {
-  var addressedTo = data.addressedTo;
+  var addressedTo = (data.addressedTo || '').toLowerCase();
+  var agentLdapLower = (agentLdap || '').toLowerCase();
   var targets = [];
 
-  if (addressedTo === 'Both') {
+  if (addressedTo === 'both') {
     // Notify team lead and all managers
-    var agent = findRow('Agents', 'LDAP', agentLdap);
-    if (agent && agent.TeamLead) targets.push(agent.TeamLead);
+    var agent = findRow('Agents', 'LDAP', agentLdapLower);
+    if (agent && agent.TeamLead) targets.push(agent.TeamLead.toLowerCase());
 
-    var managers = getSheetData('Managers').filter(function(m) { return m.Role === 'manager'; });
-    managers.forEach(function(m) { targets.push(m.LDAP); });
+    var managers = getSheetData('Managers').filter(function(m) { return String(m.Role).toLowerCase() === 'manager'; });
+    managers.forEach(function(m) { if (m.LDAP) targets.push(m.LDAP.toLowerCase()); });
   } else {
     targets.push(addressedTo);
   }
@@ -75,10 +95,22 @@ function notifyLeadershipOfConcern(id, data, agentLdap) {
 function getLeadershipList() {
   var managers = getSheetData('Managers');
   return managers.map(function(m) {
+    var ldap = (m.LDAP || '').toLowerCase();
     return {
-      ldap: m.LDAP,
-      role: m.Role,
-      displayName: formatDisplayName(m.LDAP)
+      ldap: ldap,
+      role: String(m.Role || '').toLowerCase(),
+      displayName: formatDisplayName(ldap)
     };
   });
+}
+
+function updateConcern(id, updates) {
+  var success = updateRow('Concerns', 'ID', id, updates);
+  if (success && updates.Status) {
+    var concern = findRow('Concerns', 'ID', id);
+    if (concern && concern.LDAP) {
+      createNotification(concern.LDAP, 'concern_update', 'Your concern (' + id + ') status was updated to: ' + updates.Status);
+    }
+  }
+  return { success: success };
 }
