@@ -777,7 +777,27 @@ window.addEventListener('DOMContentLoaded', function() {
   if (!localStorage.getItem('playOpsTourCompleted')) {
     setTimeout(function() { openModal('modal-welcome-tour'); }, 1000);
   }
+
+  // Lazy Loading Observer
+  window._imageObserver = new IntersectionObserver((entries, observer) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const img = entry.target;
+        if (img.dataset.src) {
+          img.src = img.dataset.src;
+          img.classList.add('loaded');
+          observer.unobserve(img);
+        }
+      }
+    });
+  });
 });
+
+function observeImages() {
+  document.querySelectorAll('.lazy-load').forEach(img => {
+    window._imageObserver.observe(img);
+  });
+}
 
 function toggleSidebar() {
   var sidebar = document.getElementById('sidebar');
@@ -1072,6 +1092,7 @@ function renderView(view, data) {
 
     PerformanceMonitor.mark(`view-${view}-end`);
     PerformanceMonitor.measure(`view-${view}`, `view-${view}-start`, `view-${view}-end`);
+    observeImages();
   });
 }
 
@@ -1679,7 +1700,7 @@ function buildLeaderboardHtml(entries) {
     podiumHtml += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;cursor:pointer" onclick="navigate(\'profile\',{ldap:\'' + escHtml(e.ldap) + '\'})">' +
       '<div style="position:relative;margin-bottom:8px">' +
         (m.crown ? '<div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);font-size:22px;z-index:1">👑</div>' : '') +
-        '<img src="' + momaP + '" onerror="this.onerror=null;this.src=\'' + momaF + '\';" style="width:' + m.size + ';height:' + m.size + ';border-radius:50%;object-fit:cover;border:3px solid ' + m.color + ';display:block">' +
+        '<img data-src="' + momaP + '" class="lazy-load" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null;this.src=\'' + momaF + '\';" style="width:' + m.size + ';height:' + m.size + ';border-radius:50%;object-fit:cover;border:3px solid ' + m.color + ';display:block">' +
       '</div>' +
       '<div style="font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:2px">' + escHtml(e.displayName) + '</div>' +
       '<div style="font-size:12px;font-weight:700;color:' + m.color + ';margin-bottom:8px">' + e.monthlyPoints + ' pts</div>' +
@@ -1712,7 +1733,7 @@ function buildLeaderboardHtml(entries) {
       '<div style="font-size:' + (e.rank <= 3 ? '20px' : '15px') + ';font-weight:700;color:' + rankColor + ';text-align:center;display:flex;align-items:center;justify-content:center">' + rankEmoji + '</div>' +
       '<div class="lb-agent">' +
         '<div class="lb-avatar" style="padding:0;overflow:hidden;width:' + (e.rank <= 3 ? '40px' : '34px') + ';height:' + (e.rank <= 3 ? '40px' : '34px') + ';border:2px solid ' + (e.rank <= 3 ? rankColor : 'transparent') + '">' +
-          '<img src="' + momaP + '" onerror="this.onerror=null;this.src=\'' + momaF + '\';" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">' +
+          '<img data-src="' + momaP + '" class="lazy-load" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null;this.src=\'' + momaF + '\';" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">' +
         '</div>' +
         '<div>' +
           '<div class="lb-name">' + escHtml(e.displayName) + (e.isMe ? ' <span style="font-size:11px;color:var(--play-green);font-weight:500">(you)</span>' : '') + '</div>' +
@@ -1769,7 +1790,7 @@ function buildProfilePage(profile, targetId) {
     if (!profile) { document.getElementById(targetId).innerHTML = '<div class="empty-state"><div class="empty-state-icon">👤</div><h3>Profile not found</h3><p>This agent is not in the system yet.</p></div>'; return; }
   var momaP = 'https://moma-teams-photos.corp.google.com/photos/' + profile.ldap + '?sz=600&type=PLUS';
   var momaF = 'https://moma-teams-photos.corp.google.com/photos/' + profile.ldap + '?sz=600&type=SECURITY&type=SILHOUETTE';
-  var avatarHtml = '<img src="' + momaP + '" onerror="this.onerror=null; this.src=\'' + momaF + '\';" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">';
+  var avatarHtml = '<img data-src="' + momaP + '" class="lazy-load" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null; this.src=\'' + momaF + '\';" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">';
 
   var pts = profile.allTimePoints || 0;
   var nextTier = 'Max Rank', targetPts = pts, basePts = pts;
@@ -1910,7 +1931,7 @@ function buildTaskDetailHtml(task) {
       task.completionHistory.map(function(c) {
         var momaP = 'https://moma-teams-photos.corp.google.com/photos/' + c.ldap + '?sz=600&type=PLUS';
         var momaF = 'https://moma-teams-photos.corp.google.com/photos/' + c.ldap + '?sz=600&type=SECURITY&type=SILHOUETTE';
-        var imgHtml = '<img src="' + momaP + '" onerror="this.onerror=null; this.src=\'' + momaF + '\';" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">';
+        var imgHtml = '<img data-src="' + momaP + '" class="lazy-load" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null; this.src=\'' + momaF + '\';" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">';
         return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">' +
           '<div class="lb-avatar" style="width:30px;height:30px;padding:0;overflow:hidden">' + imgHtml + '</div>' +
           '<div style="flex:1"><div style="font-size:13px;font-weight:600">' + escHtml(c.displayName) + '</div>' +
@@ -2615,7 +2636,7 @@ function buildAnalyticsHtml(data) {
     agents.slice().sort(function(a,b){return b.monthlyPoints - a.monthlyPoints;}).map(function(a) {
       var momaP = 'https://moma-teams-photos.corp.google.com/photos/' + a.ldap + '?sz=600&type=PLUS';
       var momaF = 'https://moma-teams-photos.corp.google.com/photos/' + a.ldap + '?sz=600&type=SECURITY&type=SILHOUETTE';
-      var avatarHtml = '<img src="' + momaP + '" onerror="this.onerror=null; this.src=\'' + momaF + '\';" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">';
+      var avatarHtml = '<img data-src="' + momaP + '" class="lazy-load" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onerror="this.onerror=null; this.src=\'' + momaF + '\';" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">';
       var streakCol = a.currentStreak >= 7 ? 'var(--play-red)' : a.currentStreak >= 3 ? 'var(--play-yellow)' : 'var(--text-secondary)';
       return '<div class="lb-row" style="grid-template-columns:1fr 80px 80px 70px 80px 80px 80px 120px" onclick="navigate(\'agent-lookup\',{ldap:\'' + escHtml(a.ldap) + '\'})">' +
         '<div class="lb-agent"><div class="lb-avatar" style="width:34px;height:34px;padding:0;overflow:hidden;border:2px solid var(--border)">' + avatarHtml + '</div><div><div class="lb-name">' + escHtml(a.displayName) + '</div><div class="lb-ldap">' + escHtml(a.ldap) + '</div></div></div>' +

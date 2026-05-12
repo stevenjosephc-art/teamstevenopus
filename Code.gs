@@ -959,3 +959,39 @@ function clientGetDashboardData() {
     };
   }, this, 'clientGetDashboardData');
 }
+
+/**
+ * Weekly backup of critical dashboard sheets.
+ * Should be scheduled via a time-driven trigger.
+ */
+function backupCriticalData() {
+  return executeWithErrorHandling(function() {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var criticalSheets = ['Tasks', 'Completions', 'Kudos', 'Demerits'];
+
+    var folderName = 'PlayOps_Backups';
+    var folders = DriveApp.getFoldersByName(folderName);
+    var backupFolder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
+
+    var timestamp = Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), "yyyy-MM-dd");
+    var backupResults = [];
+
+    criticalSheets.forEach(function(sheetName) {
+      var sheet = ss.getSheetByName(sheetName);
+      if (!sheet) return;
+
+      var data = sheet.getDataRange().getValues();
+      var backupFile = SpreadsheetApp.create(sheetName + '_backup_' + timestamp);
+      backupFile.getSheets()[0].getRange(1, 1, data.length, data[0].length).setValues(data);
+
+      var fileId = backupFile.getId();
+      var file = DriveApp.getFileById(fileId);
+      file.moveTo(backupFolder);
+
+      backupResults.push(sheetName);
+    });
+
+    auditLog('BACKUP_COMPLETED', { sheets: backupResults, folder: folderName }, 'system');
+    return { success: true, backedUp: backupResults };
+  }, this, 'backupCriticalData');
+}
