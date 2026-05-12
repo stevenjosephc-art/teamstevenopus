@@ -948,3 +948,14 @@ function warmCsatCache() {
     Logger.log('[CSAT Cache] Warm error: ' + e.message);
   }
 }
+
+function clientGetDashboardData() {
+  return executeWithErrorHandling(function() {
+    var ldap = getCurrentLdap();
+    return {
+      tasks: getHomepageTasks(ldap),
+      profile: getAgentFullProfile(ldap, true),
+      notifications: getNotifications(ldap)
+    };
+  }, this, 'clientGetDashboardData');
+}
