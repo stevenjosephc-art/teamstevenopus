@@ -1380,7 +1380,7 @@ function renderTaskCardHtml(task) {
     statusHtml = renderStatusBadge('available');
   }
 
-  return '<div class="task-card card-elevation-1" data-task-id="' + escHtml(task.id) + '" style="width:280px;min-width:280px;display:flex;flex-direction:row;gap:12px;padding:14px;align-items:flex-start">' +
+  return '<div class="task-card card-elevation-1" onclick="navigate(\'task-detail\', {taskId:\'' + escHtml(task.id) + '\'})" data-task-id="' + escHtml(task.id) + '" style="width:280px;min-width:280px;display:flex;flex-direction:row;gap:12px;padding:14px;align-items:flex-start">' +
     '<div style="width:56px;height:56px;border-radius:14px;background:' + catColor + ';display:flex;align-items:center;justify-content:center;flex-shrink:0;flex-direction:column">' +
       '<div style="font-family:\'Google Sans\',sans-serif;font-size:18px;font-weight:700;color:#fff;line-height:1">' + task.basePoints + '</div>' +
       '<div style="font-size:9px;font-weight:600;color:rgba(255,255,255,0.8);text-transform:uppercase;letter-spacing:.5px">pts</div>' +
@@ -1892,8 +1892,8 @@ function buildTaskDetailHtml(task) {
     actionBtn = '<button class="btn btn-secondary btn-full" disabled>✓ Completed</button>';
   } else if (task.agentStatus === 'In Progress') {
     actionBtn = '<button class="btn btn-primary btn-full" onclick="doComplete(\'' + safeId + '\')">✓ Mark as Complete</button>';
-  } else if (task.status === 'Expired') {
-    actionBtn = '<button class="btn btn-secondary btn-full" disabled>Task Expired</button>';
+  } else if (task.status === 'Expired' || task.urgency === 'expired') {
+    actionBtn = '<button class="btn btn-secondary btn-full" style="cursor:not-allowed;" disabled>Task Expired</button>';
   } else {
     actionBtn = '<button class="btn btn-primary btn-full" onclick="doClaim(\'' + safeId + '\')">Claim Task</button>';
   }
