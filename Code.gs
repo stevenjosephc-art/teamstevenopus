@@ -480,6 +480,45 @@ function requireSupervisor() {
   }
 }
 
+// --- Quality Bridge ---
+function clientGetMyQuality(ldap, month) {
+  return executeWithErrorHandling(function() {
+    var requesterLdap = getCurrentLdap();
+    var requesterRole = getUserRole(requesterLdap);
+    var isMgmt = requesterRole === 'manager' || requesterRole === 'supervisor';
+    var targetLdap = (ldap && isMgmt) ? ldap : requesterLdap;
+
+    if (requesterRole === 'supervisor' && targetLdap !== requesterLdap) {
+      var managed = getManagedLdaps(requesterLdap);
+      if (managed.indexOf(targetLdap) === -1) {
+        targetLdap = requesterLdap;
+      }
+    }
+
+    return getMyQualityData(targetLdap, month);
+  }, this, 'clientGetMyQuality');
+}
+
+function clientGetTeamQuality(month) {
+  return executeWithErrorHandling(function() {
+    requireSupervisor();
+    return getTeamQualityData(getCurrentLdap(), month);
+  }, this, 'clientGetTeamQuality');
+}
+
+function clientGetAllTeamsQuality(month) {
+  return executeWithErrorHandling(function() {
+    requireManager();
+    return getAllTeamsQualityData(month);
+  }, this, 'clientGetAllTeamsQuality');
+}
+
+function clientGetAvailableQualityMonths() {
+  return executeWithErrorHandling(function() {
+    return getAvailableQualityMonths();
+  }, this, 'clientGetAvailableQualityMonths');
+}
+
 // --- CSAT Bridge ---
 function clientGetMyCsat(ldap, month) {
   return executeWithErrorHandling(function() {
@@ -952,10 +991,21 @@ function warmCsatCache() {
 function clientGetDashboardData() {
   return executeWithErrorHandling(function() {
     var ldap = getCurrentLdap();
-    return {
+    var currentMonth = currentCsatMonth(); // Uses YYYY-MM format
+
+    var data = {
       tasks: getHomepageTasks(ldap),
       profile: getAgentFullProfile(ldap, true),
       notifications: getNotifications(ldap)
     };
+
+    // Background load Quality stats for current month to improve perceived speed
+    try {
+      data.quality = getMyQualityData(ldap, currentMonth);
+    } catch(e) {
+      Logger.log('[Dashboard] Quality pre-load failed: ' + e.message);
+    }
+
+    return data;
   }, this, 'clientGetDashboardData');
 }
