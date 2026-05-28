@@ -142,20 +142,16 @@ function normalizeLdap(val) {
 function aggregateQualityRows(rows) {
   if (rows.length === 0) return null;
 
-  var customerSum = 0;
-  var businessSum = 0;
-  var complianceSum = 0;
+  var customerSum = 0, businessSum = 0, complianceSum = 0;
 
   var params = {};
-  // Initialize param counters
-  var paramCols = [
-    'LISTENING', 'PROBING', 'COMPLETE_RESOLUTION', 'TROUBLESHOOTING', 'USER_EXPECTATIONS',
-    'EMPATHY', 'OWNERSHIP', 'REFUNDS', 'RESPONSIVENESS',
-    'CONSULTS_ESCALATIONS', 'CASE_DETAILS', 'CATEGORIZATION', 'CSAT_REMINDER', 'CASE_STATE',
-    'OPENING_CLOSING', 'LANGUAGE_PROFICIENCY',
-    'AUTHENTICATION', 'GOOGLE_ONLY_INFO', 'PROFESSIONAL_CONDUCT', 'PAYMENT_COMPLAINTS'
-  ];
+  var paramGroups = {
+    customer: ['LISTENING', 'PROBING', 'COMPLETE_RESOLUTION', 'TROUBLESHOOTING', 'USER_EXPECTATIONS', 'EMPATHY', 'OWNERSHIP', 'REFUNDS', 'RESPONSIVENESS'],
+    business: ['CONSULTS_ESCALATIONS', 'CASE_DETAILS', 'CATEGORIZATION', 'CSAT_REMINDER', 'CASE_STATE', 'OPENING_CLOSING', 'LANGUAGE_PROFICIENCY'],
+    compliance: ['AUTHENTICATION', 'GOOGLE_ONLY_INFO', 'PROFESSIONAL_CONDUCT', 'PAYMENT_COMPLAINTS']
+  };
 
+  var paramCols = [].concat(paramGroups.customer, paramGroups.business, paramGroups.compliance);
   paramCols.forEach(function(p) { params[p] = { yes: 0, total: 0 }; });
 
   rows.forEach(function(r) {
@@ -173,11 +169,17 @@ function aggregateQualityRows(rows) {
   });
 
   var count = rows.length;
-
   var paramScores = {};
   paramCols.forEach(function(p) {
     paramScores[p] = params[p].total > 0 ? (params[p].yes / params[p].total) * 100 : null;
   });
+
+  // Grouped params
+  var groupedParams = {
+    customer: paramGroups.customer.map(p => ({ name: p, score: paramScores[p] })),
+    business: paramGroups.business.map(p => ({ name: p, score: paramScores[p] })),
+    compliance: paramGroups.compliance.map(p => ({ name: p, score: paramScores[p] }))
+  };
 
   return {
     customer: (customerSum / count) * 100,
@@ -185,8 +187,44 @@ function aggregateQualityRows(rows) {
     compliance: (complianceSum / count) * 100,
     count: count,
     params: paramScores,
+    groupedParams: groupedParams,
     targets: Q_TARGETS
   };
+}
+
+function aggregateTrends(rows) {
+  var daily = {};
+  var weekly = {};
+
+  rows.forEach(function(r) {
+    var dateRaw = r[Q_COLS.REVIEW_DATE];
+    var date = (dateRaw instanceof Date) ? Utilities.formatDate(dateRaw, Session.getScriptTimeZone(), 'yyyy-MM-dd') : String(dateRaw);
+    var week = r[Q_COLS.REVIEW_WEEK];
+
+    [ {obj: daily, key: date}, {obj: weekly, key: week} ].forEach(function(t) {
+      if (!t.key) return;
+      if (!t.obj[t.key]) t.obj[t.key] = { customer: 0, business: 0, compliance: 0, count: 0 };
+      t.obj[t.key].customer += (parseFloat(r[Q_COLS.CUSTOMER_CRITICAL]) || 0);
+      t.obj[t.key].business += (parseFloat(r[Q_COLS.BUSINESS_CRITICAL]) || 0);
+      t.obj[t.key].compliance += (parseFloat(r[Q_COLS.COMPLIANCE_CRITICAL]) || 0);
+      t.obj[t.key].count++;
+    });
+  });
+
+  var formatTrend = function(obj) {
+    return Object.keys(obj).sort().map(function(k) {
+      var d = obj[k];
+      return {
+        label: k,
+        customer: (d.customer / d.count) * 100,
+        business: (d.business / d.count) * 100,
+        compliance: (d.compliance / d.count) * 100,
+        avg: ((d.customer + d.business + d.compliance) / (d.count * 3)) * 100
+      };
+    });
+  };
+
+  return { daily: formatTrend(daily), weekly: formatTrend(weekly) };
 }
 
 // ── VIEW DATA FETCHERS ────────────────────────────────────────────────────
@@ -203,6 +241,7 @@ function getMyQualityData(ldap, month) {
   });
 
   var stats = aggregateQualityRows(filtered);
+  var trends = aggregateTrends(filtered);
 
   var caseLog = filtered.map(function(r) {
     return {
@@ -247,6 +286,7 @@ function getMyQualityData(ldap, month) {
     ldap: ldap,
     month: month,
     stats: stats,
+    trends: trends,
     caseLog: caseLog,
     hasData: filtered.length > 0
   };
@@ -270,6 +310,7 @@ function getTeamQualityData(managerLdap, month) {
   });
 
   var teamStats = aggregateQualityRows(teamRows);
+  var trends = aggregateTrends(teamRows);
 
   var agentStats = {};
   var uniqueLdaps = [];
@@ -300,6 +341,7 @@ function getTeamQualityData(managerLdap, month) {
     managerLdap: managerLdap,
     month: month,
     stats: teamStats,
+    trends: trends,
     agents: agents,
     hasData: teamRows.length > 0
   };
