@@ -62,12 +62,51 @@ var Q_TARGETS = {
 // ── DATA LOADING ──────────────────────────────────────────────────────────
 
 function getRawQualityData() {
+  var cacheKey = 'quality_raw_v1';
+  var cache = CacheService.getScriptCache();
+
+  try {
+    var chunkCount = cache.get(cacheKey + '_chunks');
+    if (chunkCount) {
+      var assembled = '';
+      for (var c = 0; c < parseInt(chunkCount); c++) {
+        var chunk = cache.get(cacheKey + '_chunk_' + c);
+        if (!chunk) { assembled = null; break; }
+        assembled += chunk;
+      }
+      if (assembled) return JSON.parse(assembled);
+    }
+  } catch(e) {
+    Logger.log('[Quality] Cache read error: ' + e.message);
+  }
+
   var sheet = getSheet(QUALITY_SHEET_NAME);
   var raw = sheet.getDataRange().getValues();
   if (raw.length < 2) return [];
 
-  // Skip header
-  return raw.slice(1);
+  var data = raw.slice(1);
+
+  // Cache result (chunked if needed)
+  try {
+    var serialized = JSON.stringify(data);
+    if (serialized.length < 100000) {
+      cache.put(cacheKey, serialized, 1800); // 30 min
+    } else {
+      var chunkSize = 90000;
+      var chunks = [];
+      for (var ci = 0; ci < serialized.length; ci += chunkSize) {
+        chunks.push(serialized.slice(ci, ci + chunkSize));
+      }
+      chunks.forEach(function(chunk, idx) {
+        cache.put(cacheKey + '_chunk_' + idx, chunk, 1800);
+      });
+      cache.put(cacheKey + '_chunks', String(chunks.length), 1800);
+    }
+  } catch(e) {
+    Logger.log('[Quality] Cache write error: ' + e.message);
+  }
+
+  return data;
 }
 
 function getAvailableQualityMonths() {
@@ -153,6 +192,10 @@ function aggregateQualityRows(rows) {
 // ── VIEW DATA FETCHERS ────────────────────────────────────────────────────
 
 function getMyQualityData(ldap, month) {
+  var cacheKey = 'quality_agent_' + normalizeLdap(ldap) + '_' + month;
+  var cached = getCached(cacheKey);
+  if (cached) return cached;
+
   var allRows = getRawQualityData();
   var filtered = allRows.filter(function(r) {
     return normalizeLdap(r[Q_COLS.AGENT_LDAP]) === normalizeLdap(ldap) &&
@@ -200,16 +243,23 @@ function getMyQualityData(ldap, month) {
     };
   });
 
-  return {
+  var result = {
     ldap: ldap,
     month: month,
     stats: stats,
     caseLog: caseLog,
     hasData: filtered.length > 0
   };
+
+  setCached(cacheKey, result, 600); // 10 min
+  return result;
 }
 
 function getTeamQualityData(managerLdap, month) {
+  var cacheKey = 'quality_team_' + normalizeLdap(managerLdap) + '_' + month;
+  var cached = getCached(cacheKey);
+  if (cached) return cached;
+
   var managedLdaps = getManagedLdaps(managerLdap);
   var allRows = getRawQualityData();
 
@@ -246,16 +296,23 @@ function getTeamQualityData(managerLdap, month) {
     return avgB - avgA;
   });
 
-  return {
+  var result = {
     managerLdap: managerLdap,
     month: month,
     stats: teamStats,
     agents: agents,
     hasData: teamRows.length > 0
   };
+
+  setCached(cacheKey, result, 600); // 10 min
+  return result;
 }
 
 function getAllTeamsQualityData(month) {
+  var cacheKey = 'quality_allteams_' + month;
+  var cached = getCached(cacheKey);
+  if (cached) return cached;
+
   var allRows = getRawQualityData();
   var monthRows = allRows.filter(function(r) {
     return normalizeQualityMonth(r[Q_COLS.REVIEW_MONTH]) === month;
@@ -289,9 +346,12 @@ function getAllTeamsQualityData(month) {
       return avgB - avgA;
     });
 
-  return {
+  var result = {
     month: month,
     siteStats: siteStats,
     teams: teams
   };
+
+  setCached(cacheKey, result, 600); // 10 min
+  return result;
 }

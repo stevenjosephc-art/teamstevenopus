@@ -16,14 +16,41 @@ function renderQualityView() {
         return '<option value="' + m + '"' + (i === 0 ? ' selected' : '') + '>' + m + '</option>';
       }).join('');
       window._qualitySelectedMonth = months[0] || '';
+
       var role = APP.session ? APP.session.role : 'agent';
       var defaultTab = (role === 'manager' || role === 'supervisor') ? 'manager' : 'agent';
+
+      // Pre-warm caches for current month in background
+      preWarmQualityCache(months[0]);
+
       switchQualityTab(defaultTab);
     })
     .withFailureHandler(function() {
       switchQualityTab('agent');
     })
     .clientGetAvailableQualityMonths();
+}
+
+function preWarmQualityCache(month) {
+  if (!month) return;
+  var role = APP.session ? APP.session.role : 'agent';
+
+  // Always pre-warm own score
+  google.script.run.withSuccessHandler(function(d) {
+    CACHE.set('quality_agent_' + month + '_' + APP.session.ldap, d, 600);
+  }).clientGetMyQuality('', month);
+
+  if (role === 'manager' || role === 'supervisor') {
+    google.script.run.withSuccessHandler(function(d) {
+      CACHE.set('quality_manager_' + month, d, 600);
+    }).clientGetTeamQuality(month);
+  }
+
+  if (role === 'manager') {
+    google.script.run.withSuccessHandler(function(d) {
+      CACHE.set('quality_allteams_' + month, d, 600);
+    }).clientGetAllTeamsQuality(month);
+  }
 }
 
 function buildQualityShell() {
@@ -105,9 +132,41 @@ function switchQualityTab(id) {
   }
 
   var panel = document.getElementById('quality-panel-' + id);
+  // Check client cache first
+  var month = window._qualitySelectedMonth || '';
+  var cacheKey = 'quality_' + id + '_' + month;
+
+  if (id === 'manager') cacheKey = 'quality_manager_' + month;
+  if (id === 'allteams') cacheKey = 'quality_allteams_' + month;
+
+  if (id === 'agent') {
+    var agentPicker = document.getElementById('quality-agent-picker');
+    var agentLdap = agentPicker ? agentPicker.value : (APP.session ? APP.session.ldap : '');
+    cacheKey = 'quality_agent_' + month + '_' + agentLdap;
+  }
+
+  var cached = CACHE.get(cacheKey);
+  if (cached) {
+    renderQualityFromData(id, panel, cached);
+    return;
+  }
+
   if (panel && panel.dataset.loaded !== 'true') {
     panel.dataset.loaded = 'true';
     loadQualityPanel(id, panel);
+  }
+}
+
+function renderQualityFromData(id, panel, d) {
+  panel.dataset.loaded = 'true';
+  if (id === 'agent') {
+    panel.innerHTML = buildQualityAgentView(d);
+    renderQualityCharts(d);
+  } else if (id === 'manager') {
+    panel.innerHTML = buildQualityManagerView(d);
+    renderTeamQualityCharts(d);
+  } else if (id === 'allteams') {
+    panel.innerHTML = buildQualityAllTeamsView(d);
   }
 }
 
@@ -149,6 +208,9 @@ function onQualityMonthChange(month) {
     var p = document.getElementById('quality-panel-' + t);
     if (p) { p.dataset.loaded = ''; p.innerHTML = ''; }
   });
+
+  preWarmQualityCache(month);
+
   var activeTab = document.querySelector('#quality-root .csat-vtab-on');
   if (activeTab) {
     var id = activeTab.id.replace('quality-tab-','');
@@ -174,15 +236,26 @@ function loadQualityPanel(id, panel) {
        return;
     }
     google.script.run
-      .withSuccessHandler(function(d) { panel.innerHTML = buildQualityAgentView(d); renderQualityCharts(d); })
+      .withSuccessHandler(function(d) {
+        CACHE.set('quality_agent_' + month + '_' + (agentLdap || APP.session.ldap), d, 600);
+        panel.innerHTML = buildQualityAgentView(d);
+        renderQualityCharts(d);
+      })
       .clientGetMyQuality(agentLdap, month);
   } else if (id === 'manager') {
     google.script.run
-      .withSuccessHandler(function(d) { panel.innerHTML = buildQualityManagerView(d); renderTeamQualityCharts(d); })
+      .withSuccessHandler(function(d) {
+        CACHE.set('quality_manager_' + month, d, 600);
+        panel.innerHTML = buildQualityManagerView(d);
+        renderTeamQualityCharts(d);
+      })
       .clientGetTeamQuality(month);
   } else if (id === 'allteams') {
     google.script.run
-      .withSuccessHandler(function(d) { panel.innerHTML = buildQualityAllTeamsView(d); })
+      .withSuccessHandler(function(d) {
+        CACHE.set('quality_allteams_' + month, d, 600);
+        panel.innerHTML = buildQualityAllTeamsView(d);
+      })
       .clientGetAllTeamsQuality(month);
   }
 }
@@ -286,10 +359,44 @@ function buildQualityManagerView(d) {
     '</div>' +
 
     '<div class="csat-card-sm">' +
+      '<div class="csat-p-title">Team Performance Breakdown</div>' +
+      '<div id="team-quality-bar-chart" style="height:350px"></div>' +
+    '</div>' +
+
+    '<div class="csat-card-sm">' +
       '<div class="csat-p-title">Agent Quality Scorecard</div>' +
       buildQualityAgentScorecard(d.agents) +
     '</div>'
   );
+}
+
+function renderTeamQualityCharts(d) {
+  if (!d || !d.agents || d.agents.length === 0) return;
+
+  var categories = d.agents.map(a => a.displayName || a.ldap);
+  var customerData = d.agents.map(a => a.stats.customer);
+  var businessData = d.agents.map(a => a.stats.business);
+  var complianceData = d.agents.map(a => a.stats.compliance);
+
+  var options = {
+    series: [
+      { name: 'Customer', data: customerData },
+      { name: 'Business', data: businessData },
+      { name: 'Compliance', data: complianceData }
+    ],
+    chart: { type: 'bar', height: 350, stacked: false, toolbar: { show: false } },
+    plotOptions: { bar: { horizontal: false, columnWidth: '55%', borderRadius: 4 } },
+    dataLabels: { enabled: false },
+    stroke: { show: true, width: 2, colors: ['transparent'] },
+    xaxis: { categories: categories },
+    yaxis: { title: { text: 'Score %' }, max: 100 },
+    fill: { opacity: 1 },
+    colors: ['#4285F4', '#34A853', '#EA4335'],
+    tooltip: { y: { formatter: val => val.toFixed(1) + "%" } }
+  };
+
+  var chart = new ApexCharts(document.querySelector("#team-quality-bar-chart"), options);
+  chart.render();
 }
 
 function buildQualityHeroCard(label, score, target, color, icon) {

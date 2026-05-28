@@ -991,10 +991,21 @@ function warmCsatCache() {
 function clientGetDashboardData() {
   return executeWithErrorHandling(function() {
     var ldap = getCurrentLdap();
-    return {
+    var currentMonth = currentCsatMonth(); // Uses YYYY-MM format
+
+    var data = {
       tasks: getHomepageTasks(ldap),
       profile: getAgentFullProfile(ldap, true),
       notifications: getNotifications(ldap)
     };
+
+    // Background load Quality stats for current month to improve perceived speed
+    try {
+      data.quality = getMyQualityData(ldap, currentMonth);
+    } catch(e) {
+      Logger.log('[Dashboard] Quality pre-load failed: ' + e.message);
+    }
+
+    return data;
   }, this, 'clientGetDashboardData');
 }
