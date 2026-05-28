@@ -253,30 +253,30 @@ function getMyQualityData(ldap, month) {
       comments: r[Q_COLS.REVIEWER_COMMENTS],
       details: {
         customer: {
-          listening: r[Q_COLS.LISTENING],
-          probing: r[Q_COLS.PROBING],
-          resolution: r[Q_COLS.COMPLETE_RESOLUTION],
-          troubleshooting: r[Q_COLS.TROUBLESHOOTING],
-          expectations: r[Q_COLS.USER_EXPECTATIONS],
-          empathy: r[Q_COLS.EMPATHY],
-          ownership: r[Q_COLS.OWNERSHIP],
-          refunds: r[Q_COLS.REFUNDS],
-          responsiveness: r[Q_COLS.RESPONSIVENESS]
+          LISTENING: r[Q_COLS.LISTENING],
+          PROBING: r[Q_COLS.PROBING],
+          COMPLETE_RESOLUTION: r[Q_COLS.COMPLETE_RESOLUTION],
+          TROUBLESHOOTING: r[Q_COLS.TROUBLESHOOTING],
+          USER_EXPECTATIONS: r[Q_COLS.USER_EXPECTATIONS],
+          EMPATHY: r[Q_COLS.EMPATHY],
+          OWNERSHIP: r[Q_COLS.OWNERSHIP],
+          REFUNDS: r[Q_COLS.REFUNDS],
+          RESPONSIVENESS: r[Q_COLS.RESPONSIVENESS]
         },
         business: {
-          escalations: r[Q_COLS.CONSULTS_ESCALATIONS],
-          details: r[Q_COLS.CASE_DETAILS],
-          categorization: r[Q_COLS.CATEGORIZATION],
-          csat: r[Q_COLS.CSAT_REMINDER],
-          state: r[Q_COLS.CASE_STATE],
-          opening: r[Q_COLS.OPENING_CLOSING],
-          language: r[Q_COLS.LANGUAGE_PROFICIENCY]
+          CONSULTS_ESCALATIONS: r[Q_COLS.CONSULTS_ESCALATIONS],
+          CASE_DETAILS: r[Q_COLS.CASE_DETAILS],
+          CATEGORIZATION: r[Q_COLS.CATEGORIZATION],
+          CSAT_REMINDER: r[Q_COLS.CSAT_REMINDER],
+          CASE_STATE: r[Q_COLS.CASE_STATE],
+          OPENING_CLOSING: r[Q_COLS.OPENING_CLOSING],
+          LANGUAGE_PROFICIENCY: r[Q_COLS.LANGUAGE_PROFICIENCY]
         },
         compliance: {
-          auth: r[Q_COLS.AUTHENTICATION],
-          googleInfo: r[Q_COLS.GOOGLE_ONLY_INFO],
-          conduct: r[Q_COLS.PROFESSIONAL_CONDUCT],
-          payments: r[Q_COLS.PAYMENT_COMPLAINTS]
+          AUTHENTICATION: r[Q_COLS.AUTHENTICATION],
+          GOOGLE_ONLY_INFO: r[Q_COLS.GOOGLE_ONLY_INFO],
+          PROFESSIONAL_CONDUCT: r[Q_COLS.PROFESSIONAL_CONDUCT],
+          PAYMENT_COMPLAINTS: r[Q_COLS.PAYMENT_COMPLAINTS]
         }
       }
     };
