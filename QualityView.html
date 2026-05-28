@@ -1,0 +1,424 @@
+<script>
+// ============================================================
+// QualityView — Quality Audit Dashboard
+// ============================================================
+
+function renderQualityView() {
+  var el = document.getElementById('view-quality');
+  el.innerHTML = buildQualityShell();
+
+  // Load available months
+  google.script.run
+    .withSuccessHandler(function(months) {
+      var picker = document.getElementById('quality-month-picker');
+      if (!picker) return;
+      picker.innerHTML = months.map(function(m, i) {
+        return '<option value="' + m + '"' + (i === 0 ? ' selected' : '') + '>' + m + '</option>';
+      }).join('');
+      window._qualitySelectedMonth = months[0] || '';
+      var role = APP.session ? APP.session.role : 'agent';
+      var defaultTab = (role === 'manager' || role === 'supervisor') ? 'manager' : 'agent';
+      switchQualityTab(defaultTab);
+    })
+    .withFailureHandler(function() {
+      switchQualityTab('agent');
+    })
+    .clientGetAvailableQualityMonths();
+}
+
+function buildQualityShell() {
+  var role = APP.session ? APP.session.role : 'agent';
+  var isMgmt = role === 'manager' || role === 'supervisor';
+  var isManager = role === 'manager';
+
+  var tabs =
+    '<div class="csat-tab-row">' +
+      qualityTab('agent',    '👤', 'My Score',  true) +
+      (isMgmt ? qualityTab('manager', '📋', 'My Team') : '') +
+      (isManager ? qualityTab('allteams', '🌐', 'All Teams') : '') +
+    '</div>';
+
+  var agentSelector = '';
+  if (isMgmt) {
+    agentSelector =
+      '<div id="quality-agent-selector" style="display:none;margin-bottom:14px;padding:12px 16px;' +
+      'background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);' +
+      'align-items:center;gap:12px;">' +
+        '<label style="font-size:12px;font-weight:600;color:var(--text-secondary);' +
+        'text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">View agent:</label>' +
+        '<select id="quality-agent-picker" onchange="switchQualityAgent(this.value)" ' +
+        'style="flex:1;max-width:280px;height:36px;background:var(--surface-2);' +
+        'color:var(--text-primary);border:1px solid var(--border-strong);' +
+        'border-radius:var(--radius-sm);padding:0 12px;font-size:13px;cursor:pointer;">' +
+          '<option value="">— Select an agent —</option>' +
+        '</select>' +
+      '</div>';
+  }
+
+  return '<div id="quality-root">' +
+    '<div class="csat-topbar">' +
+      '<div class="csat-page-title">' +
+        '<div class="csat-play-badge" style="background:#4285F4"><svg width="12" height="12" viewBox="0 0 24 24" fill="white">' +
+        '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>' +
+        'Quality Dashboard' +
+      '</div>' +
+      '<div class="csat-controls">' +
+        '<select id="quality-month-picker" class="csat-pill" ' +
+        'onchange="onQualityMonthChange(this.value)" ' +
+        'style="cursor:pointer;padding:3px 8px;min-width:110px;">' +
+          '<option value="">Loading months…</option>' +
+        '</select>' +
+      '</div>' +
+    '</div>' +
+    tabs +
+    agentSelector +
+    '<div id="quality-panel-agent"  class="csat-panel"></div>' +
+    '<div id="quality-panel-manager" class="csat-panel" style="display:none"></div>' +
+    '<div id="quality-panel-allteams" class="csat-panel" style="display:none"></div>' +
+  '</div>';
+}
+
+function qualityTab(id, icon, label, active) {
+  return '<div class="csat-vtab' + (active ? ' csat-vtab-on' : '') + '" ' +
+    'id="quality-tab-' + id + '" onclick="switchQualityTab(\'' + id + '\')">' +
+    icon + ' ' + label + '</div>';
+}
+
+function switchQualityTab(id) {
+  var role = APP.session ? APP.session.role : 'agent';
+  var isManager = role === 'manager';
+
+  ['agent','manager','allteams'].forEach(function(t) {
+    var panel = document.getElementById('quality-panel-' + t);
+    var tab   = document.getElementById('quality-tab-' + t);
+    if (!panel || !tab) return;
+    var on = t === id;
+    panel.style.display = on ? 'block' : 'none';
+    tab.classList.toggle('csat-vtab-on', on);
+  });
+
+  var selector = document.getElementById('quality-agent-selector');
+  if (selector) {
+    var isMgmt = role === 'manager' || role === 'supervisor';
+    selector.style.display = (id === 'agent' && isMgmt) ? 'flex' : 'none';
+    if (id === 'agent' && isMgmt) populateQualityAgentDropdown();
+  }
+
+  var panel = document.getElementById('quality-panel-' + id);
+  if (panel && panel.dataset.loaded !== 'true') {
+    panel.dataset.loaded = 'true';
+    loadQualityPanel(id, panel);
+  }
+}
+
+function populateQualityAgentDropdown() {
+  var picker = document.getElementById('quality-agent-picker');
+  if (!picker || picker.dataset.loaded === 'true') return;
+  picker.dataset.loaded = 'true';
+
+  google.script.run
+    .withSuccessHandler(function(agents) {
+      picker.innerHTML = '<option value="">— Select an agent —</option>';
+      (agents || []).forEach(function(a) {
+        var opt = document.createElement('option');
+        opt.value = a.ldap;
+        opt.textContent = (a.displayName || a.ldap) + ' (' + a.ldap + ')';
+        picker.appendChild(opt);
+      });
+    })
+    .clientGetAllAgents();
+}
+
+function switchQualityAgent(ldap) {
+  var panel = document.getElementById('quality-panel-agent');
+  if (!panel) return;
+  if (!ldap) {
+    panel.dataset.loaded = '';
+    loadQualityPanel('agent', panel);
+    return;
+  }
+  panel.innerHTML = '<div class="loading-state"><div class="spinner"></div><span>Loading agent scores…</span></div>';
+  google.script.run
+    .withSuccessHandler(function(d) { panel.innerHTML = buildQualityAgentView(d); renderQualityCharts(d); })
+    .clientGetMyQuality(ldap, window._qualitySelectedMonth);
+}
+
+function onQualityMonthChange(month) {
+  window._qualitySelectedMonth = month;
+  ['agent','manager','allteams'].forEach(function(t) {
+    var p = document.getElementById('quality-panel-' + t);
+    if (p) { p.dataset.loaded = ''; p.innerHTML = ''; }
+  });
+  var activeTab = document.querySelector('#quality-root .csat-vtab-on');
+  if (activeTab) {
+    var id = activeTab.id.replace('quality-tab-','');
+    var panel = document.getElementById('quality-panel-' + id);
+    if (panel) {
+      panel.dataset.loaded = 'true';
+      loadQualityPanel(id, panel);
+    }
+  }
+}
+
+function loadQualityPanel(id, panel) {
+  panel.innerHTML = '<div class="loading-state"><div class="spinner"></div><span>Loading quality data…</span></div>';
+  var month = window._qualitySelectedMonth || '';
+
+  if (id === 'agent') {
+    var agentPicker = document.getElementById('quality-agent-picker');
+    var agentLdap = agentPicker ? agentPicker.value : '';
+    // If supervisor and no agent selected, show blank view message
+    var role = APP.session ? APP.session.role : 'agent';
+    if ((role === 'manager' || role === 'supervisor') && !agentLdap) {
+       panel.innerHTML = '<div class="empty-state"><h3>Select an agent to view scores</h3></div>';
+       return;
+    }
+    google.script.run
+      .withSuccessHandler(function(d) { panel.innerHTML = buildQualityAgentView(d); renderQualityCharts(d); })
+      .clientGetMyQuality(agentLdap, month);
+  } else if (id === 'manager') {
+    google.script.run
+      .withSuccessHandler(function(d) { panel.innerHTML = buildQualityManagerView(d); renderTeamQualityCharts(d); })
+      .clientGetTeamQuality(month);
+  } else if (id === 'allteams') {
+    google.script.run
+      .withSuccessHandler(function(d) { panel.innerHTML = buildQualityAllTeamsView(d); })
+      .clientGetAllTeamsQuality(month);
+  }
+}
+
+// ── AGENT VIEW ────────────────────────────────────────────────────────────
+
+function buildQualityAgentView(d) {
+  if (!d || !d.hasData) {
+    return '<div class="empty-state"><h3>No quality data for ' + (d ? d.month : 'this month') + '</h3></div>';
+  }
+
+  var s = d.stats;
+  return (
+    '<div class="csat-score-row">' +
+      buildQualityScoreCard('Customer', s.customer, Q_TARGETS.CUSTOMER, '#4285F4') +
+      buildQualityScoreCard('Business', s.business, Q_TARGETS.BUSINESS, '#34A853') +
+      buildQualityScoreCard('Compliance', s.compliance, Q_TARGETS.COMPLIANCE, '#EA4335') +
+      '<div class="csat-score-card" style="--accent:var(--text-primary)">' +
+        '<div class="csat-lbl">Total Audits</div>' +
+        '<div style="font-size:32px;font-weight:700;margin:10px 0">' + s.count + '</div>' +
+        '<div style="font-size:11px;color:var(--text-hint)">This Month</div>' +
+      '</div>' +
+    '</div>' +
+
+    '<div class="csat-two-col">' +
+      '<div class="csat-card-sm">' +
+        '<div class="csat-p-title">Critical Performance</div>' +
+        '<div id="quality-radar-chart" style="height:300px"></div>' +
+      '</div>' +
+      '<div class="csat-card-sm">' +
+        '<div class="csat-p-title">Parameter Breakdown</div>' +
+        '<div id="quality-params-chart" style="height:300px"></div>' +
+      '</div>' +
+    '</div>' +
+
+    buildQualityCaseLogTable(d.caseLog)
+  );
+}
+
+function buildQualityScoreCard(label, score, target, color) {
+  var isPass = score >= target;
+  var statusText = isPass ? 'On Target' : 'Below Target';
+  var statusColor = isPass ? '#34A853' : '#EA4335';
+
+  return '<div class="csat-score-card" style="--accent:' + color + '">' +
+    '<div class="csat-lbl">' + label + ' Critical</div>' +
+    '<div style="font-size:28px;font-weight:700;margin:5px 0;color:' + color + '">' + (score !== null ? score.toFixed(1) + '%' : '—') + '</div>' +
+    '<div style="font-size:11px;font-weight:600;color:' + statusColor + '">' + statusText + '</div>' +
+    '<div style="font-size:10px;color:var(--text-hint);margin-top:4px">Target: ' + target + '%</div>' +
+  '</div>';
+}
+
+function renderQualityCharts(d) {
+  if (!d || !d.stats) return;
+  var s = d.stats;
+
+  // Radar Chart
+  var radarOptions = {
+    series: [{ name: 'My Score', data: [s.customer, s.business, s.compliance] },
+             { name: 'Target', data: [Q_TARGETS.CUSTOMER, Q_TARGETS.BUSINESS, Q_TARGETS.COMPLIANCE] }],
+    chart: { height: 300, type: 'radar', toolbar: { show: false } },
+    xaxis: { categories: ['Customer', 'Business', 'Compliance'] },
+    colors: ['#4285F4', '#EA4335'],
+    fill: { opacity: 0.1 },
+    stroke: { width: 2 }
+  };
+  new ApexCharts(document.querySelector("#quality-radar-chart"), radarOptions).render();
+
+  // Params Bar Chart
+  var paramLabels = Object.keys(s.params).map(p => p.replace(/_/g, ' ').toLowerCase());
+  var paramValues = Object.values(s.params);
+
+  var barOptions = {
+    series: [{ name: 'Score', data: paramValues }],
+    chart: { type: 'bar', height: 300, toolbar: { show: false } },
+    plotOptions: { bar: { horizontal: true, borderRadius: 4, distributed: true } },
+    dataLabels: { enabled: true, formatter: val => val ? val.toFixed(0) + '%' : '' },
+    xaxis: { categories: paramLabels, max: 100 },
+    legend: { show: false },
+    colors: paramValues.map(v => v >= 90 ? '#34A853' : (v >= 75 ? '#FBBC05' : '#EA4335'))
+  };
+  new ApexCharts(document.querySelector("#quality-params-chart"), barOptions).render();
+}
+
+// ── MANAGER VIEW ──────────────────────────────────────────────────────────
+
+function buildQualityManagerView(d) {
+  if (!d || !d.hasData) return '<div class="empty-state"><h3>No team quality data</h3></div>';
+
+  var s = d.stats;
+  return (
+    '<div class="csat-hero-row">' +
+      buildQualityHeroCard('Team Customer', s.customer, Q_TARGETS.CUSTOMER, '#4285F4', '👤') +
+      buildQualityHeroCard('Team Business', s.business, Q_TARGETS.BUSINESS, '#34A853', '📋') +
+      buildQualityHeroCard('Team Compliance', s.compliance, Q_TARGETS.COMPLIANCE, '#EA4335', '⚖️') +
+      '<div class="csat-hero-c" style="border-top:3px solid var(--text-primary)">' +
+        '<div class="csat-lbl">Team Audits</div>' +
+        '<div class="csat-h-pct">' + s.count + '</div>' +
+        '<div class="csat-h-vol">This Month</div>' +
+      '</div>' +
+    '</div>' +
+
+    '<div class="csat-card-sm">' +
+      '<div class="csat-p-title">Agent Quality Scorecard</div>' +
+      buildQualityAgentScorecard(d.agents) +
+    '</div>'
+  );
+}
+
+function buildQualityHeroCard(label, score, target, color, icon) {
+  var isPass = score >= target;
+  var statusColor = isPass ? '#34A853' : '#EA4335';
+  return '<div class="csat-hero-c" style="border-top:3px solid ' + color + '">' +
+    '<div class="csat-lbl">' + label + '</div>' +
+    '<div class="csat-h-pct" style="color:' + color + '">' + (score !== null ? score.toFixed(1) + '%' : '—') + '</div>' +
+    '<div class="csat-h-trend" style="color:' + statusColor + ';font-weight:600">' + (isPass ? 'Above' : 'Below') + ' Target (' + target + '%)</div>' +
+    '<div class="csat-hero-ico">' + icon + '</div>' +
+  '</div>';
+}
+
+function buildQualityAgentScorecard(agents) {
+  var rows = agents.map(function(a) {
+    var avg = (a.stats.customer + a.stats.business + a.stats.compliance) / 3;
+    return '<tr onclick="switchQualityAgent(\'' + a.ldap + '\'); switchQualityTab(\'agent\')">' +
+      '<td>' + (a.displayName || a.ldap) + '</td>' +
+      '<td>' + a.stats.count + '</td>' +
+      '<td style="color:' + (a.stats.customer >= Q_TARGETS.CUSTOMER ? '#34A853' : '#EA4335') + '">' + a.stats.customer.toFixed(1) + '%</td>' +
+      '<td style="color:' + (a.stats.business >= Q_TARGETS.BUSINESS ? '#34A853' : '#EA4335') + '">' + a.stats.business.toFixed(1) + '%</td>' +
+      '<td style="color:' + (a.stats.compliance >= Q_TARGETS.COMPLIANCE ? '#34A853' : '#EA4335') + '">' + a.stats.compliance.toFixed(1) + '%</td>' +
+      '<td style="font-weight:700">' + avg.toFixed(1) + '%</td>' +
+    '</tr>';
+  }).join('');
+
+  return '<table class="csat-ag-tbl"><thead><tr>' +
+    '<th style="text-align:left">Agent</th><th>Audits</th><th>Customer</th><th>Business</th><th>Compliance</th><th>Avg</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+// ── ALL TEAMS VIEW ────────────────────────────────────────────────────────
+
+function buildQualityAllTeamsView(d) {
+  if (!d || !d.teams) return '<div class="empty-state"><h3>No data</h3></div>';
+
+  return '<div class="csat-card-sm">' +
+    '<div class="csat-p-title">Team Quality Comparison</div>' +
+    '<table class="csat-ag-tbl"><thead><tr>' +
+      '<th style="text-align:left">Team</th><th>Audits</th><th>Customer</th><th>Business</th><th>Compliance</th>' +
+    '</tr></thead><tbody>' +
+    d.teams.map(function(t) {
+      return '<tr>' +
+        '<td style="text-align:left"><strong>' + t.teamName + '</strong></td>' +
+        '<td>' + t.stats.count + '</td>' +
+        '<td>' + t.stats.customer.toFixed(1) + '%</td>' +
+        '<td>' + t.stats.business.toFixed(1) + '%</td>' +
+        '<td>' + t.stats.compliance.toFixed(1) + '%</td>' +
+      '</tr>';
+    }).join('') +
+    '</tbody></table>' +
+  '</div>';
+}
+
+// ── CASE LOG & LOOKUP ─────────────────────────────────────────────────────
+
+function buildQualityCaseLogTable(cases) {
+  if (!cases || cases.length === 0) return '';
+
+  var rows = cases.map(function(c, i) {
+    var custMarkdowns = Object.entries(c.details.customer).filter(([k, v]) => String(v).toLowerCase() === 'no').map(([k, v]) => k);
+    var busMarkdowns = Object.entries(c.details.business).filter(([k, v]) => String(v).toLowerCase() === 'no').map(([k, v]) => k);
+    var compMarkdowns = Object.entries(c.details.compliance).filter(([k, v]) => String(v).toLowerCase() === 'no').map(([k, v]) => k);
+
+    var markdownHtml = '';
+    if (custMarkdowns.length > 0) markdownHtml += '<div style="color:#EA4335;font-size:11px">Cust: ' + custMarkdowns.join(', ') + '</div>';
+    if (busMarkdowns.length > 0) markdownHtml += '<div style="color:#FBBC05;font-size:11px">Bus: ' + busMarkdowns.join(', ') + '</div>';
+    if (compMarkdowns.length > 0) markdownHtml += '<div style="color:#c62828;font-size:11px">Comp: ' + compMarkdowns.join(', ') + '</div>';
+    if (!markdownHtml) markdownHtml = '<div style="color:#34A853;font-size:11px">Perfect Audit!</div>';
+
+    return '<tr>' +
+      '<td>' +
+        '<a href="https://cases.connect.corp.google.com/' + c.caseId + '" target="_blank" style="color:#4285F4;font-weight:600">' + c.caseId + '</a>' +
+        '<div style="font-size:10px;color:var(--text-hint)">' + c.reviewDate + '</div>' +
+      '</td>' +
+      '<td>' + (c.customer == 1 ? '✅' : '❌') + '</td>' +
+      '<td>' + (c.business == 1 ? '✅' : '❌') + '</td>' +
+      '<td>' + (c.compliance == 1 ? '✅' : '❌') + '</td>' +
+      '<td style="text-align:left">' + markdownHtml + '</td>' +
+      '<td><button class="btn btn-sm btn-secondary" onclick="toggleQualityDetails(' + i + ')">Details</button></td>' +
+    '</tr>' +
+    '<tr id="quality-details-' + i + '" style="display:none"><td colspan="6" style="padding:15px;background:var(--surface-2);text-align:left">' +
+      '<div style="font-size:12px;font-weight:600;margin-bottom:8px">Reviewer Comments:</div>' +
+      '<div style="font-size:12px;font-style:italic;color:var(--text-secondary);margin-bottom:12px">"' + (c.comments || 'No comments provided.') + '"</div>' +
+      buildParameterChecklist(c.details) +
+    '</td></tr>';
+  }).join('');
+
+  return '<div class="csat-card-sm" style="margin-top:10px">' +
+    '<div class="csat-p-title">Case Lookup & Audit Details</div>' +
+    '<table class="csat-ag-tbl"><thead><tr>' +
+      '<th style="text-align:left">Case ID</th><th>Cust</th><th>Bus</th><th>Comp</th><th style="text-align:left">Markdowns</th><th></th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table>' +
+  '</div>';
+}
+
+function buildParameterChecklist(details) {
+  var html = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px">';
+
+  // Customer
+  html += '<div><div style="font-size:11px;font-weight:700;color:#4285F4;margin-bottom:5px">CUSTOMER</div>';
+  Object.entries(details.customer).forEach(([k, v]) => {
+    html += '<div style="font-size:11px;display:flex;justify-content:space-between;border-bottom:1px solid var(--border)"><span>' + k + '</span><span>' + (String(v).toLowerCase() === 'yes' ? '✅' : (String(v).toLowerCase() === 'no' ? '❌' : '—')) + '</span></div>';
+  });
+  html += '</div>';
+
+  // Business
+  html += '<div><div style="font-size:11px;font-weight:700;color:#34A853;margin-bottom:5px">BUSINESS</div>';
+  Object.entries(details.business).forEach(([k, v]) => {
+    html += '<div style="font-size:11px;display:flex;justify-content:space-between;border-bottom:1px solid var(--border)"><span>' + k + '</span><span>' + (String(v).toLowerCase() === 'yes' ? '✅' : (String(v).toLowerCase() === 'no' ? '❌' : '—')) + '</span></div>';
+  });
+  html += '</div>';
+
+  // Compliance
+  html += '<div><div style="font-size:11px;font-weight:700;color:#EA4335;margin-bottom:5px">COMPLIANCE</div>';
+  Object.entries(details.compliance).forEach(([k, v]) => {
+    html += '<div style="font-size:11px;display:flex;justify-content:space-between;border-bottom:1px solid var(--border)"><span>' + k + '</span><span>' + (String(v).toLowerCase() === 'yes' ? '✅' : (String(v).toLowerCase() === 'no' ? '❌' : '—')) + '</span></div>';
+  });
+  html += '</div>';
+
+  html += '</div>';
+  return html;
+}
+
+function toggleQualityDetails(idx) {
+  var el = document.getElementById('quality-details-' + idx);
+  el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
+}
+
+var Q_TARGETS = { CUSTOMER: 95, BUSINESS: 90, COMPLIANCE: 99.5 };
+
+</script>
