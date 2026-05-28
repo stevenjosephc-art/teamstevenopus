@@ -356,10 +356,12 @@ function renderTrendChart(elId, data) {
   var options = {
     series: [
       { name: 'Average QA', data: data.map(t => t.avg.toFixed(1)) },
-      { name: 'Customer', data: data.map(t => t.customer.toFixed(1)) }
+      { name: 'Customer', data: data.map(t => t.customer.toFixed(1)) },
+      { name: 'Business', data: data.map(t => t.business.toFixed(1)) },
+      { name: 'Compliance', data: data.map(t => t.compliance.toFixed(1)) }
     ],
     chart: { type: 'area', height: 350, toolbar: { show: false } },
-    colors: [Q_COLORS.BLUE, Q_COLORS.INDIGO],
+    colors: [Q_COLORS.BLUE, Q_COLORS.INDIGO, Q_COLORS.GREEN, Q_COLORS.RED],
     dataLabels: { enabled: false },
     stroke: { curve: 'smooth', width: 3 },
     xaxis: { categories: data.map(t => t.label), labels: { style: { colors: 'var(--text-hint)' } } },
@@ -555,11 +557,47 @@ function buildQualityCaseLogTable(cases) {
   }).join('');
 
   return '<div class="q-card mt-24">' +
-    '<div class="q-card-title">Case Lookup & Audit Details</div>' +
-    '<div class="q-table-container"><table class="q-table"><thead><tr>' +
+    '<div class="q-card-title-row">' +
+      '<div class="q-card-title">Case Lookup & Audit Details</div>' +
+      '<div class="q-filters">' +
+        '<button class="q-filter-btn active" data-filter="all" onclick="filterQualityTable(\'all\', this)">All</button>' +
+        '<button class="q-filter-btn" data-filter="perfect" onclick="filterQualityTable(\'perfect\', this)">Perfect</button>' +
+        '<button class="q-filter-btn" data-filter="markdown" onclick="filterQualityTable(\'markdown\', this)">Markdowns</button>' +
+      '</div>' +
+    '</div>' +
+    '<div class="q-table-container"><table class="q-table" id="quality-case-table"><thead><tr>' +
       '<th style="text-align:left">Case ID</th><th>Cust</th><th>Bus</th><th>Comp</th><th style="text-align:left">Markdowns</th><th style="text-align:right"></th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
   '</div>';
+}
+
+function filterQualityTable(filter, btn) {
+  var table = document.getElementById('quality-case-table');
+  if (!table) return;
+
+  // Update buttons
+  var btns = btn.parentNode.querySelectorAll('.q-filter-btn');
+  btns.forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  var rows = table.querySelectorAll('tbody > tr');
+  rows.forEach(row => {
+    if (row.classList.contains('q-details-row') || row.id.startsWith('quality-details-')) {
+       row.style.display = 'none'; // Close all details when filtering
+       return;
+    }
+
+    var hasMarkdown = row.querySelector('.q-markdown-chip') !== null;
+    var isPerfect = row.querySelector('.q-perfect') !== null;
+
+    if (filter === 'all') {
+      row.style.display = 'table-row';
+    } else if (filter === 'perfect') {
+      row.style.display = isPerfect ? 'table-row' : 'none';
+    } else if (filter === 'markdown') {
+      row.style.display = hasMarkdown ? 'table-row' : 'none';
+    }
+  });
 }
 
 function buildParameterChecklist(details) {
@@ -589,6 +627,28 @@ function buildParameterChecklist(details) {
 function toggleQualityDetails(idx) {
   var el = document.getElementById('quality-details-' + idx);
   el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
+}
+
+function preWarmQualityCache(month) {
+  if (!month || !APP.session) return;
+  var role = APP.session.role;
+  var isMgmt = role === 'manager' || role === 'supervisor';
+
+  // Pre-warm agent view for current user
+  google.script.run
+    .withSuccessHandler(function(d) {
+       CACHE.set('quality_agent_' + month + '_' + APP.session.ldap, d, 600);
+    })
+    .clientGetMyQuality('', month);
+
+  if (isMgmt) {
+    // Pre-warm team view
+    google.script.run
+      .withSuccessHandler(function(d) {
+         CACHE.set('quality_manager_' + month, d, 600);
+      })
+      .clientGetTeamQuality(month);
+  }
 }
 
 var Q_TARGETS = { CUSTOMER: 95, BUSINESS: 90, COMPLIANCE: 99.5 };
@@ -642,6 +702,10 @@ var Q_TARGETS = { CUSTOMER: 95, BUSINESS: 90, COMPLIANCE: 99.5 };
 .q-param-val { font-size: 11px; font-weight: 800; width: 35px; text-align: right; font-family: monospace; }
 
 .q-select { background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 8px; padding: 8px 12px; color: var(--text-primary); font-weight: 500; cursor: pointer; outline: none; }
+
+.q-filters { display: flex; gap: 8px; background: var(--surface-2); padding: 4px; border-radius: 10px; border: 1px solid var(--border); }
+.q-filter-btn { border: none; background: transparent; padding: 6px 16px; border-radius: 7px; font-size: 12px; font-weight: 700; color: var(--text-secondary); cursor: pointer; transition: all 0.2s; }
+.q-filter-btn.active { background: var(--surface); color: var(--text-primary); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 
 .q-table-container { overflow-x: auto; margin: -10px; padding: 10px; }
 .q-table { width: 100%; border-collapse: collapse; }
