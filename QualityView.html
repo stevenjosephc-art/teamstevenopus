@@ -434,11 +434,12 @@ function filterByParameter(paramName) {
     const caseData = window._currentCaseLog[idx];
     if (!caseData) return;
 
-    // Check if parameter is 'no' in any critical group
+    // Check if parameter is 'no' in any critical group (using uppercase keys from service)
+    const pKey = paramName.toUpperCase();
     const isFail =
-      (caseData.details.customer[paramName.toLowerCase()] === 'no') ||
-      (caseData.details.business[paramName.toLowerCase()] === 'no') ||
-      (caseData.details.compliance[paramName.toLowerCase()] === 'no');
+      (String(caseData.details.customer[pKey]).toLowerCase() === 'no') ||
+      (String(caseData.details.business[pKey]).toLowerCase() === 'no') ||
+      (String(caseData.details.compliance[pKey]).toLowerCase() === 'no');
 
     r.style.display = isFail ? 'table-row' : 'none';
   });
@@ -511,8 +512,9 @@ function renderTrendChart(elId, data) {
     fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.1 } },
     annotations: {
       yaxis: [
-        { y: Q_TARGETS.CUSTOMER, borderColor: Q_COLORS.BLUE, strokeDashArray: 4, label: { text: 'Cust Target ('+Q_TARGETS.CUSTOMER+'%)', style: { color: '#fff', background: Q_COLORS.BLUE } } },
-        { y: Q_TARGETS.BUSINESS, borderColor: Q_COLORS.GREEN, strokeDashArray: 4, label: { text: 'Bus Target ('+Q_TARGETS.BUSINESS+'%)', style: { color: '#fff', background: Q_COLORS.GREEN } } }
+        { y: Q_TARGETS.CUSTOMER, borderColor: Q_COLORS.BLUE, strokeDashArray: 4, label: { text: 'Cust ('+Q_TARGETS.CUSTOMER+'%)', style: { color: '#fff', background: Q_COLORS.BLUE } } },
+        { y: Q_TARGETS.BUSINESS, borderColor: Q_COLORS.GREEN, strokeDashArray: 4, label: { text: 'Bus ('+Q_TARGETS.BUSINESS+'%)', style: { color: '#fff', background: Q_COLORS.GREEN } } },
+        { y: Q_TARGETS.COMPLIANCE, borderColor: Q_COLORS.RED, strokeDashArray: 4, label: { text: 'Comp ('+Q_TARGETS.COMPLIANCE+'%)', style: { color: '#fff', background: Q_COLORS.RED } } }
       ]
     },
     tooltip: { theme: 'dark' },
@@ -781,8 +783,13 @@ function filterQualityTable(filter, btn) {
   btns.forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
 
-  var rows = table.querySelectorAll('tbody > tr:not(.q-details-row)');
+  var rows = table.querySelectorAll('tbody > tr');
   rows.forEach(row => {
+    if (row.classList.contains('q-details-row') || row.id.startsWith('quality-details-')) {
+       row.style.display = 'none'; // Always close details when filtering
+       return;
+    }
+
     var hasMarkdown = row.querySelector('.q-markdown-chip') !== null;
     var isPerfect = row.querySelector('.q-perfect') !== null;
 
