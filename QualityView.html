@@ -1,13 +1,30 @@
 <script>
 // ============================================================
-// QualityView — Quality Audit Dashboard
+// QualityView — Quality Audit Dashboard (Apple HIG Design)
 // ============================================================
+
+const Q_ICONS = {
+  USER: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:18px;height:18px"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>',
+  TEAM: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:18px;height:18px"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.25 0 1 1-5.25 0 2.625 2.25 0 0 1 5.25 0Z" /></svg>',
+  ALL: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:18px;height:18px"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.003 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 0 1 3 12c0-1.605.42-3.113 1.157-4.418" /></svg>',
+  CHECK: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="#34C759" style="width:20px;height:20px"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.857-9.809a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 1 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z" clip-rule="evenodd" /></svg>',
+  X: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="#FF3B30" style="width:20px;height:20px"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM8.28 7.22a.75.75 0 0 0-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 1 0 1.06 1.06L10 11.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L11.06 10l1.72-1.72a.75.75 0 0 0-1.06-1.06L10 8.94 8.28 7.22Z" clip-rule="evenodd" /></svg>',
+  DASHBOARD: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" style="width:14px;height:14px"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>'
+};
+
+var Q_COLORS = {
+  BLUE: '#007AFF',
+  GREEN: '#34C759',
+  RED: '#FF3B30',
+  ORANGE: '#FF9500',
+  TEAL: '#30B0C7',
+  INDIGO: '#5856D6'
+};
 
 function renderQualityView() {
   var el = document.getElementById('view-quality');
   el.innerHTML = buildQualityShell();
 
-  // Load available months
   google.script.run
     .withSuccessHandler(function(months) {
       var picker = document.getElementById('quality-month-picker');
@@ -20,9 +37,7 @@ function renderQualityView() {
       var role = APP.session ? APP.session.role : 'agent';
       var defaultTab = (role === 'manager' || role === 'supervisor') ? 'manager' : 'agent';
 
-      // Pre-warm caches for current month in background
       preWarmQualityCache(months[0]);
-
       switchQualityTab(defaultTab);
     })
     .withFailureHandler(function() {
@@ -31,89 +46,56 @@ function renderQualityView() {
     .clientGetAvailableQualityMonths();
 }
 
-function preWarmQualityCache(month) {
-  if (!month) return;
-  var role = APP.session ? APP.session.role : 'agent';
-
-  // Always pre-warm own score
-  google.script.run.withSuccessHandler(function(d) {
-    CACHE.set('quality_agent_' + month + '_' + APP.session.ldap, d, 600);
-  }).clientGetMyQuality('', month);
-
-  if (role === 'manager' || role === 'supervisor') {
-    google.script.run.withSuccessHandler(function(d) {
-      CACHE.set('quality_manager_' + month, d, 600);
-    }).clientGetTeamQuality(month);
-  }
-
-  if (role === 'manager') {
-    google.script.run.withSuccessHandler(function(d) {
-      CACHE.set('quality_allteams_' + month, d, 600);
-    }).clientGetAllTeamsQuality(month);
-  }
-}
-
 function buildQualityShell() {
   var role = APP.session ? APP.session.role : 'agent';
   var isMgmt = role === 'manager' || role === 'supervisor';
-  var isManager = role === 'manager';
 
   var tabs =
-    '<div class="csat-tab-row">' +
-      qualityTab('agent',    '👤', 'My Score',  true) +
-      (isMgmt ? qualityTab('manager', '📋', 'My Team') : '') +
-      (isManager ? qualityTab('allteams', '🌐', 'All Teams') : '') +
+    '<div class="q-tab-row">' +
+      qualityTab('agent',    Q_ICONS.USER, 'My Score',  true) +
+      (isMgmt ? qualityTab('manager', Q_ICONS.TEAM, 'My Team') : '') +
+      (role === 'manager' ? qualityTab('allteams', Q_ICONS.ALL, 'All Teams') : '') +
     '</div>';
 
   var agentSelector = '';
   if (isMgmt) {
     agentSelector =
-      '<div id="quality-agent-selector" style="display:none;margin-bottom:14px;padding:12px 16px;' +
-      'background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);' +
-      'align-items:center;gap:12px;">' +
-        '<label style="font-size:12px;font-weight:600;color:var(--text-secondary);' +
-        'text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;">View agent:</label>' +
-        '<select id="quality-agent-picker" onchange="switchQualityAgent(this.value)" ' +
-        'style="flex:1;max-width:280px;height:36px;background:var(--surface-2);' +
-        'color:var(--text-primary);border:1px solid var(--border-strong);' +
-        'border-radius:var(--radius-sm);padding:0 12px;font-size:13px;cursor:pointer;">' +
+      '<div id="quality-agent-selector" class="q-card mb-16" style="display:none;align-items:center;gap:15px;padding:12px 20px">' +
+        '<span style="font-size:12px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px">View Agent:</span>' +
+        '<select id="quality-agent-picker" onchange="switchQualityAgent(this.value)" class="q-select">' +
           '<option value="">— Select an agent —</option>' +
         '</select>' +
       '</div>';
   }
 
-  return '<div id="quality-root">' +
-    '<div class="csat-topbar">' +
-      '<div class="csat-page-title">' +
-        '<div class="csat-play-badge" style="background:#4285F4"><svg width="12" height="12" viewBox="0 0 24 24" fill="white">' +
-        '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>' +
+  return '<div id="quality-root" class="q-container">' +
+    '<div class="q-topbar">' +
+      '<div class="q-page-title">' +
+        '<div class="q-icon-badge">' + Q_ICONS.DASHBOARD + '</div>' +
         'Quality Dashboard' +
       '</div>' +
-      '<div class="csat-controls">' +
-        '<select id="quality-month-picker" class="csat-pill" ' +
-        'onchange="onQualityMonthChange(this.value)" ' +
-        'style="cursor:pointer;padding:3px 8px;min-width:110px;">' +
-          '<option value="">Loading months…</option>' +
+      '<div class="q-controls">' +
+        '<select id="quality-month-picker" class="q-pill-select" onchange="onQualityMonthChange(this.value)">' +
+          '<option value="">Loading...</option>' +
         '</select>' +
       '</div>' +
     '</div>' +
     tabs +
     agentSelector +
-    '<div id="quality-panel-agent"  class="csat-panel"></div>' +
-    '<div id="quality-panel-manager" class="csat-panel" style="display:none"></div>' +
-    '<div id="quality-panel-allteams" class="csat-panel" style="display:none"></div>' +
+    '<div id="quality-panel-agent"   class="q-panel"></div>' +
+    '<div id="quality-panel-manager" class="q-panel" style="display:none"></div>' +
+    '<div id="quality-panel-allteams" class="q-panel" style="display:none"></div>' +
   '</div>';
 }
 
 function qualityTab(id, icon, label, active) {
-  return '<div class="csat-vtab' + (active ? ' csat-vtab-on' : '') + '" ' +
+  return '<div class="q-tab' + (active ? ' active' : '') + '" ' +
     'id="quality-tab-' + id + '" onclick="switchQualityTab(\'' + id + '\')">' +
-    icon + ' ' + label + '</div>';
+    icon + '<span>' + label + '</span></div>';
 }
 
 function switchQualityTab(id) {
   var role = APP.session ? APP.session.role : 'agent';
-  var isManager = role === 'manager';
 
   ['agent','manager','allteams'].forEach(function(t) {
     var panel = document.getElementById('quality-panel-' + t);
@@ -121,7 +103,7 @@ function switchQualityTab(id) {
     if (!panel || !tab) return;
     var on = t === id;
     panel.style.display = on ? 'block' : 'none';
-    tab.classList.toggle('csat-vtab-on', on);
+    tab.classList.toggle('active', on);
   });
 
   var selector = document.getElementById('quality-agent-selector');
@@ -132,13 +114,11 @@ function switchQualityTab(id) {
   }
 
   var panel = document.getElementById('quality-panel-' + id);
-  // Check client cache first
   var month = window._qualitySelectedMonth || '';
   var cacheKey = 'quality_' + id + '_' + month;
 
   if (id === 'manager') cacheKey = 'quality_manager_' + month;
   if (id === 'allteams') cacheKey = 'quality_allteams_' + month;
-
   if (id === 'agent') {
     var agentPicker = document.getElementById('quality-agent-picker');
     var agentLdap = agentPicker ? agentPicker.value : (APP.session ? APP.session.ldap : '');
@@ -178,7 +158,7 @@ function populateQualityAgentDropdown() {
   google.script.run
     .withSuccessHandler(function(agents) {
       picker.innerHTML = '<option value="">— Select an agent —</option>';
-      (agents || []).forEach(function(a) {
+      (agents || []).sort((a,b) => (a.displayName||a.ldap).localeCompare(b.displayName||b.ldap)).forEach(function(a) {
         var opt = document.createElement('option');
         opt.value = a.ldap;
         opt.textContent = (a.displayName || a.ldap) + ' (' + a.ldap + ')';
@@ -196,7 +176,7 @@ function switchQualityAgent(ldap) {
     loadQualityPanel('agent', panel);
     return;
   }
-  panel.innerHTML = '<div class="loading-state"><div class="spinner"></div><span>Loading agent scores…</span></div>';
+  panel.innerHTML = '<div class="q-loading"><div class="q-spinner"></div><span>Loading scores…</span></div>';
   google.script.run
     .withSuccessHandler(function(d) { panel.innerHTML = buildQualityAgentView(d); renderQualityCharts(d); })
     .clientGetMyQuality(ldap, window._qualitySelectedMonth);
@@ -208,10 +188,8 @@ function onQualityMonthChange(month) {
     var p = document.getElementById('quality-panel-' + t);
     if (p) { p.dataset.loaded = ''; p.innerHTML = ''; }
   });
-
   preWarmQualityCache(month);
-
-  var activeTab = document.querySelector('#quality-root .csat-vtab-on');
+  var activeTab = document.querySelector('.q-tab.active');
   if (activeTab) {
     var id = activeTab.id.replace('quality-tab-','');
     var panel = document.getElementById('quality-panel-' + id);
@@ -223,16 +201,15 @@ function onQualityMonthChange(month) {
 }
 
 function loadQualityPanel(id, panel) {
-  panel.innerHTML = '<div class="loading-state"><div class="spinner"></div><span>Loading quality data…</span></div>';
+  panel.innerHTML = '<div class="q-loading"><div class="q-spinner"></div><span>Loading quality data…</span></div>';
   var month = window._qualitySelectedMonth || '';
 
   if (id === 'agent') {
     var agentPicker = document.getElementById('quality-agent-picker');
     var agentLdap = agentPicker ? agentPicker.value : '';
-    // If supervisor and no agent selected, show blank view message
     var role = APP.session ? APP.session.role : 'agent';
     if ((role === 'manager' || role === 'supervisor') && !agentLdap) {
-       panel.innerHTML = '<div class="empty-state"><h3>Select an agent to view scores</h3></div>';
+       panel.innerHTML = '<div class="q-empty"><h3>Please select an agent to view their scores</h3></div>';
        return;
     }
     google.script.run
@@ -263,31 +240,25 @@ function loadQualityPanel(id, panel) {
 // ── AGENT VIEW ────────────────────────────────────────────────────────────
 
 function buildQualityAgentView(d) {
-  if (!d || !d.hasData) {
-    return '<div class="empty-state"><h3>No quality data for ' + (d ? d.month : 'this month') + '</h3></div>';
-  }
+  if (!d || !d.hasData) return '<div class="q-empty"><h3>No quality data for ' + (d ? d.month : 'this month') + '</h3></div>';
 
   var s = d.stats;
   return (
-    '<div class="csat-score-row">' +
-      buildQualityScoreCard('Customer', s.customer, Q_TARGETS.CUSTOMER, '#4285F4') +
-      buildQualityScoreCard('Business', s.business, Q_TARGETS.BUSINESS, '#34A853') +
-      buildQualityScoreCard('Compliance', s.compliance, Q_TARGETS.COMPLIANCE, '#EA4335') +
-      '<div class="csat-score-card" style="--accent:var(--text-primary)">' +
-        '<div class="csat-lbl">Total Audits</div>' +
-        '<div style="font-size:32px;font-weight:700;margin:10px 0">' + s.count + '</div>' +
-        '<div style="font-size:11px;color:var(--text-hint)">This Month</div>' +
-      '</div>' +
+    '<div class="q-score-row">' +
+      buildAppleScoreCard('Customer Critical', s.customer, Q_TARGETS.CUSTOMER, Q_COLORS.BLUE) +
+      buildAppleScoreCard('Business Critical', s.business, Q_TARGETS.BUSINESS, Q_COLORS.GREEN) +
+      buildAppleScoreCard('Compliance Critical', s.compliance, Q_TARGETS.COMPLIANCE, Q_COLORS.RED) +
+      buildAppleScoreCard('Total Audits', s.count, null, '#444', true) +
     '</div>' +
 
-    '<div class="csat-two-col">' +
-      '<div class="csat-card-sm">' +
-        '<div class="csat-p-title">Critical Performance</div>' +
-        '<div id="quality-radar-chart" style="height:300px"></div>' +
+    '<div class="q-chart-grid">' +
+      '<div class="q-card q-chart-card">' +
+        '<div class="q-card-title">Critical Performance</div>' +
+        '<div id="quality-radar-chart" class="q-apex-chart-radar"></div>' +
       '</div>' +
-      '<div class="csat-card-sm">' +
-        '<div class="csat-p-title">Parameter Breakdown</div>' +
-        '<div id="quality-params-chart" style="height:300px"></div>' +
+      '<div class="q-card q-chart-card">' +
+        '<div class="q-card-title">Parameter Breakdown</div>' +
+        '<div id="quality-params-chart" class="q-apex-chart-bar"></div>' +
       '</div>' +
     '</div>' +
 
@@ -295,16 +266,19 @@ function buildQualityAgentView(d) {
   );
 }
 
-function buildQualityScoreCard(label, score, target, color) {
-  var isPass = score >= target;
-  var statusText = isPass ? 'On Target' : 'Below Target';
-  var statusColor = isPass ? '#34A853' : '#EA4335';
+function buildAppleScoreCard(label, score, target, color, isCounter) {
+  var isPass = target === null || score >= target;
+  var statusText = isCounter ? 'This Month' : (isPass ? 'On Target' : 'Below Target');
+  var scoreDisplay = isCounter ? score : (score !== null ? score.toFixed(1) + '%' : '—');
 
-  return '<div class="csat-score-card" style="--accent:' + color + '">' +
-    '<div class="csat-lbl">' + label + ' Critical</div>' +
-    '<div style="font-size:28px;font-weight:700;margin:5px 0;color:' + color + '">' + (score !== null ? score.toFixed(1) + '%' : '—') + '</div>' +
-    '<div style="font-size:11px;font-weight:600;color:' + statusColor + '">' + statusText + '</div>' +
-    '<div style="font-size:10px;color:var(--text-hint);margin-top:4px">Target: ' + target + '%</div>' +
+  return '<div class="q-apple-card" style="border-top: 4px solid ' + color + '">' +
+    '<div class="q-card-label">' + label + '</div>' +
+    '<div class="q-card-value" style="color:' + color + '">' + scoreDisplay + '</div>' +
+    '<div class="q-card-status ' + (isPass || isCounter ? 'on-target' : 'below-target') + '">' +
+      (isCounter ? '' : (isPass ? Q_ICONS.CHECK : Q_ICONS.X)) +
+      '<span>' + statusText + '</span>' +
+    '</div>' +
+    (target ? '<div class="q-card-target">Target: ' + target + '%</div>' : '') +
   '</div>';
 }
 
@@ -314,28 +288,39 @@ function renderQualityCharts(d) {
 
   // Radar Chart
   var radarOptions = {
-    series: [{ name: 'My Score', data: [s.customer, s.business, s.compliance] },
-             { name: 'Target', data: [Q_TARGETS.CUSTOMER, Q_TARGETS.BUSINESS, Q_TARGETS.COMPLIANCE] }],
-    chart: { height: 300, type: 'radar', toolbar: { show: false } },
-    xaxis: { categories: ['Customer', 'Business', 'Compliance'] },
-    colors: ['#4285F4', '#EA4335'],
-    fill: { opacity: 0.1 },
-    stroke: { width: 2 }
+    series: [
+      { name: 'My Score', data: [s.customer, s.business, s.compliance] },
+      { name: 'Target', data: [Q_TARGETS.CUSTOMER, Q_TARGETS.BUSINESS, Q_TARGETS.COMPLIANCE] }
+    ],
+    chart: { height: 450, type: 'radar', toolbar: { show: false }, animations: { speed: 800 } },
+    xaxis: {
+      categories: ['Customer', 'Business', 'Compliance'],
+      labels: { style: { fontSize: '14px', fontWeight: 600, colors: ['var(--text-hint)', 'var(--text-hint)', 'var(--text-hint)'] } }
+    },
+    yaxis: { show: false, min: 0, max: 100 },
+    colors: [Q_COLORS.BLUE, Q_COLORS.RED],
+    fill: { opacity: 0.15 },
+    markers: { size: 4 },
+    stroke: { width: 3 },
+    legend: { position: 'bottom', fontSize: '14px', labels: { colors: 'var(--text-secondary)' } }
   };
   new ApexCharts(document.querySelector("#quality-radar-chart"), radarOptions).render();
 
   // Params Bar Chart
-  var paramLabels = Object.keys(s.params).map(p => p.replace(/_/g, ' ').toLowerCase());
-  var paramValues = Object.values(s.params);
+  var paramEntries = Object.entries(s.params).sort((a,b) => b[1] - a[1]);
+  var paramLabels = paramEntries.map(e => e[0].replace(/_/g, ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
+  var paramValues = paramEntries.map(e => e[1]);
 
   var barOptions = {
     series: [{ name: 'Score', data: paramValues }],
-    chart: { type: 'bar', height: 300, toolbar: { show: false } },
-    plotOptions: { bar: { horizontal: true, borderRadius: 4, distributed: true } },
-    dataLabels: { enabled: true, formatter: val => val ? val.toFixed(0) + '%' : '' },
-    xaxis: { categories: paramLabels, max: 100 },
+    chart: { type: 'bar', height: 750, toolbar: { show: false } },
+    plotOptions: { bar: { horizontal: true, borderRadius: 6, barHeight: '75%', distributed: true } },
+    dataLabels: { enabled: true, formatter: val => val ? val.toFixed(0) + '%' : '0%', style: { fontSize: '12px', fontWeight: 700 } },
+    xaxis: { categories: paramLabels, max: 100, labels: { style: { fontSize: '12px', colors: 'var(--text-hint)' } } },
+    yaxis: { labels: { style: { fontSize: '12px', fontWeight: 600, colors: 'var(--text-secondary)' } } },
     legend: { show: false },
-    colors: paramValues.map(v => v >= 90 ? '#34A853' : (v >= 75 ? '#FBBC05' : '#EA4335'))
+    colors: paramValues.map(v => v >= 95 ? Q_COLORS.GREEN : (v >= 80 ? Q_COLORS.ORANGE : Q_COLORS.RED)),
+    tooltip: { y: { formatter: val => val.toFixed(1) + '%' } }
   };
   new ApexCharts(document.querySelector("#quality-params-chart"), barOptions).render();
 }
@@ -343,28 +328,24 @@ function renderQualityCharts(d) {
 // ── MANAGER VIEW ──────────────────────────────────────────────────────────
 
 function buildQualityManagerView(d) {
-  if (!d || !d.hasData) return '<div class="empty-state"><h3>No team quality data</h3></div>';
+  if (!d || !d.hasData) return '<div class="q-empty"><h3>No team quality data available</h3></div>';
 
   var s = d.stats;
   return (
-    '<div class="csat-hero-row">' +
-      buildQualityHeroCard('Team Customer', s.customer, Q_TARGETS.CUSTOMER, '#4285F4', '👤') +
-      buildQualityHeroCard('Team Business', s.business, Q_TARGETS.BUSINESS, '#34A853', '📋') +
-      buildQualityHeroCard('Team Compliance', s.compliance, Q_TARGETS.COMPLIANCE, '#EA4335', '⚖️') +
-      '<div class="csat-hero-c" style="border-top:3px solid var(--text-primary)">' +
-        '<div class="csat-lbl">Team Audits</div>' +
-        '<div class="csat-h-pct">' + s.count + '</div>' +
-        '<div class="csat-h-vol">This Month</div>' +
-      '</div>' +
+    '<div class="q-score-row">' +
+      buildAppleScoreCard('Team Customer', s.customer, Q_TARGETS.CUSTOMER, Q_COLORS.BLUE) +
+      buildAppleScoreCard('Team Business', s.business, Q_TARGETS.GREEN, Q_COLORS.GREEN) +
+      buildAppleScoreCard('Team Compliance', s.compliance, Q_TARGETS.COMPLIANCE, Q_COLORS.RED) +
+      buildAppleScoreCard('Team Audits', s.count, null, '#444', true) +
     '</div>' +
 
-    '<div class="csat-card-sm">' +
-      '<div class="csat-p-title">Team Performance Breakdown</div>' +
-      '<div id="team-quality-bar-chart" style="height:350px"></div>' +
+    '<div class="q-card mb-24">' +
+      '<div class="q-card-title">Team Performance Breakdown</div>' +
+      '<div id="team-quality-bar-chart" style="height:450px"></div>' +
     '</div>' +
 
-    '<div class="csat-card-sm">' +
-      '<div class="csat-p-title">Agent Quality Scorecard</div>' +
+    '<div class="q-card">' +
+      '<div class="q-card-title">Agent Quality Scorecard</div>' +
       buildQualityAgentScorecard(d.agents) +
     '</div>'
   );
@@ -373,82 +354,99 @@ function buildQualityManagerView(d) {
 function renderTeamQualityCharts(d) {
   if (!d || !d.agents || d.agents.length === 0) return;
 
-  var categories = d.agents.map(a => a.displayName || a.ldap);
-  var customerData = d.agents.map(a => a.stats.customer);
-  var businessData = d.agents.map(a => a.stats.business);
-  var complianceData = d.agents.map(a => a.stats.compliance);
+  var agents = d.agents.slice(0, 15); // Show top 15
+  var categories = agents.map(a => a.displayName || a.ldap);
 
   var options = {
     series: [
-      { name: 'Customer', data: customerData },
-      { name: 'Business', data: businessData },
-      { name: 'Compliance', data: complianceData }
+      { name: 'Customer', data: agents.map(a => a.stats.customer.toFixed(1)) },
+      { name: 'Business', data: agents.map(a => a.stats.business.toFixed(1)) },
+      { name: 'Compliance', data: agents.map(a => a.stats.compliance.toFixed(1)) }
     ],
-    chart: { type: 'bar', height: 350, stacked: false, toolbar: { show: false } },
-    plotOptions: { bar: { horizontal: false, columnWidth: '55%', borderRadius: 4 } },
+    chart: { type: 'bar', height: 500, toolbar: { show: false }, stacked: false, background: 'transparent' },
+    plotOptions: { bar: { horizontal: false, columnWidth: '60%', borderRadius: 6 } },
     dataLabels: { enabled: false },
-    stroke: { show: true, width: 2, colors: ['transparent'] },
-    xaxis: { categories: categories },
-    yaxis: { title: { text: 'Score %' }, max: 100 },
-    fill: { opacity: 1 },
-    colors: ['#4285F4', '#34A853', '#EA4335'],
-    tooltip: { y: { formatter: val => val.toFixed(1) + "%" } }
+    xaxis: { categories: categories, labels: { rotate: -45, style: { fontSize: '11px', colors: 'var(--text-hint)' } } },
+    yaxis: { title: { text: 'Score %', style: { color: 'var(--text-hint)' } }, max: 100, labels: { style: { colors: 'var(--text-hint)' } } },
+    colors: [Q_COLORS.BLUE, Q_COLORS.GREEN, Q_COLORS.RED],
+    legend: { position: 'top', horizontalAlign: 'right', labels: { colors: 'var(--text-secondary)' } },
+    grid: { borderColor: 'var(--border)' },
+    tooltip: { theme: 'dark', y: { formatter: val => val + "%" } }
   };
 
-  var chart = new ApexCharts(document.querySelector("#team-quality-bar-chart"), options);
-  chart.render();
-}
-
-function buildQualityHeroCard(label, score, target, color, icon) {
-  var isPass = score >= target;
-  var statusColor = isPass ? '#34A853' : '#EA4335';
-  return '<div class="csat-hero-c" style="border-top:3px solid ' + color + '">' +
-    '<div class="csat-lbl">' + label + '</div>' +
-    '<div class="csat-h-pct" style="color:' + color + '">' + (score !== null ? score.toFixed(1) + '%' : '—') + '</div>' +
-    '<div class="csat-h-trend" style="color:' + statusColor + ';font-weight:600">' + (isPass ? 'Above' : 'Below') + ' Target (' + target + '%)</div>' +
-    '<div class="csat-hero-ico">' + icon + '</div>' +
-  '</div>';
+  new ApexCharts(document.querySelector("#team-quality-bar-chart"), options).render();
 }
 
 function buildQualityAgentScorecard(agents) {
   var rows = agents.map(function(a) {
     var avg = (a.stats.customer + a.stats.business + a.stats.compliance) / 3;
     return '<tr onclick="switchQualityAgent(\'' + a.ldap + '\'); switchQualityTab(\'agent\')">' +
-      '<td>' + (a.displayName || a.ldap) + '</td>' +
+      '<td style="text-align:left;font-weight:600">' + (a.displayName || a.ldap) + '</td>' +
       '<td>' + a.stats.count + '</td>' +
-      '<td style="color:' + (a.stats.customer >= Q_TARGETS.CUSTOMER ? '#34A853' : '#EA4335') + '">' + a.stats.customer.toFixed(1) + '%</td>' +
-      '<td style="color:' + (a.stats.business >= Q_TARGETS.BUSINESS ? '#34A853' : '#EA4335') + '">' + a.stats.business.toFixed(1) + '%</td>' +
-      '<td style="color:' + (a.stats.compliance >= Q_TARGETS.COMPLIANCE ? '#34A853' : '#EA4335') + '">' + a.stats.compliance.toFixed(1) + '%</td>' +
-      '<td style="font-weight:700">' + avg.toFixed(1) + '%</td>' +
+      '<td style="color:' + (a.stats.customer >= Q_TARGETS.CUSTOMER ? Q_COLORS.GREEN : Q_COLORS.RED) + '">' + a.stats.customer.toFixed(1) + '%</td>' +
+      '<td style="color:' + (a.stats.business >= Q_TARGETS.BUSINESS ? Q_COLORS.GREEN : Q_COLORS.RED) + '">' + a.stats.business.toFixed(1) + '%</td>' +
+      '<td style="color:' + (a.stats.compliance >= Q_TARGETS.COMPLIANCE ? Q_COLORS.GREEN : Q_COLORS.RED) + '">' + a.stats.compliance.toFixed(1) + '%</td>' +
+      '<td style="font-weight:800">' + avg.toFixed(1) + '%</td>' +
     '</tr>';
   }).join('');
 
-  return '<table class="csat-ag-tbl"><thead><tr>' +
+  return '<div class="q-table-container"><table class="q-table"><thead><tr>' +
     '<th style="text-align:left">Agent</th><th>Audits</th><th>Customer</th><th>Business</th><th>Compliance</th><th>Avg</th>' +
-    '</tr></thead><tbody>' + rows + '</tbody></table>';
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
 }
 
 // ── ALL TEAMS VIEW ────────────────────────────────────────────────────────
 
 function buildQualityAllTeamsView(d) {
-  if (!d || !d.teams) return '<div class="empty-state"><h3>No data</h3></div>';
+  if (!d || !d.teams || d.teams.length === 0) return '<div class="q-empty"><h3>No cross-team data available</h3></div>';
 
-  return '<div class="csat-card-sm">' +
-    '<div class="csat-p-title">Team Quality Comparison</div>' +
-    '<table class="csat-ag-tbl"><thead><tr>' +
-      '<th style="text-align:left">Team</th><th>Audits</th><th>Customer</th><th>Business</th><th>Compliance</th>' +
-    '</tr></thead><tbody>' +
-    d.teams.map(function(t) {
-      return '<tr>' +
-        '<td style="text-align:left"><strong>' + t.teamName + '</strong></td>' +
-        '<td>' + t.stats.count + '</td>' +
-        '<td>' + t.stats.customer.toFixed(1) + '%</td>' +
-        '<td>' + t.stats.business.toFixed(1) + '%</td>' +
-        '<td>' + t.stats.compliance.toFixed(1) + '%</td>' +
-      '</tr>';
-    }).join('') +
-    '</tbody></table>' +
-  '</div>';
+  setTimeout(() => renderAllTeamsQualityChart(d), 100);
+
+  return (
+    '<div class="q-card mb-24">' +
+      '<div class="q-card-title">Site-wide Quality Benchmark</div>' +
+      '<div id="all-teams-quality-chart" style="height:450px"></div>' +
+    '</div>' +
+    '<div class="q-card">' +
+      '<div class="q-card-title">All Teams Comparison</div>' +
+      '<div class="q-table-container"><table class="q-table"><thead><tr>' +
+        '<th style="text-align:left">Team</th><th>Audits</th><th>Customer</th><th>Business</th><th>Compliance</th><th>Average</th>' +
+      '</tr></thead><tbody>' +
+      d.teams.map(function(t) {
+        var avg = (t.stats.customer + t.stats.business + t.stats.compliance) / 3;
+        return '<tr>' +
+          '<td style="text-align:left;font-weight:700">' + t.teamName + '</td>' +
+          '<td>' + t.stats.count + '</td>' +
+          '<td>' + t.stats.customer.toFixed(1) + '%</td>' +
+          '<td>' + t.stats.business.toFixed(1) + '%</td>' +
+          '<td>' + t.stats.compliance.toFixed(1) + '%</td>' +
+          '<td style="font-weight:800">' + avg.toFixed(1) + '%</td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table></div>' +
+    '</div>'
+  );
+}
+
+function renderAllTeamsQualityChart(d) {
+  var teams = d.teams;
+  var options = {
+    series: [
+      { name: 'Customer', data: teams.map(t => t.stats.customer.toFixed(1)) },
+      { name: 'Business', data: teams.map(t => t.stats.business.toFixed(1)) },
+      { name: 'Compliance', data: teams.map(t => t.stats.compliance.toFixed(1)) }
+    ],
+    chart: { type: 'bar', height: 450, toolbar: { show: false }, background: 'transparent' },
+    plotOptions: { bar: { horizontal: false, columnWidth: '55%', borderRadius: 8 } },
+    dataLabels: { enabled: false },
+    xaxis: { categories: teams.map(t => t.teamName), labels: { style: { colors: 'var(--text-hint)', fontWeight: 600 } } },
+    yaxis: { title: { text: 'Score %', style: { color: 'var(--text-hint)' } }, max: 100, labels: { style: { colors: 'var(--text-hint)' } } },
+    colors: [Q_COLORS.BLUE, Q_COLORS.GREEN, Q_COLORS.RED],
+    legend: { position: 'top', horizontalAlign: 'right', labels: { colors: 'var(--text-secondary)' } },
+    grid: { borderColor: 'var(--border)' },
+    tooltip: { theme: 'dark', y: { formatter: val => val + "%" } }
+  };
+  new ApexCharts(document.querySelector("#all-teams-quality-chart"), options).render();
 }
 
 // ── CASE LOG & LOOKUP ─────────────────────────────────────────────────────
@@ -462,60 +460,58 @@ function buildQualityCaseLogTable(cases) {
     var compMarkdowns = Object.entries(c.details.compliance).filter(([k, v]) => String(v).toLowerCase() === 'no').map(([k, v]) => k);
 
     var markdownHtml = '';
-    if (custMarkdowns.length > 0) markdownHtml += '<div style="color:#EA4335;font-size:11px">Cust: ' + custMarkdowns.join(', ') + '</div>';
-    if (busMarkdowns.length > 0) markdownHtml += '<div style="color:#FBBC05;font-size:11px">Bus: ' + busMarkdowns.join(', ') + '</div>';
-    if (compMarkdowns.length > 0) markdownHtml += '<div style="color:#c62828;font-size:11px">Comp: ' + compMarkdowns.join(', ') + '</div>';
-    if (!markdownHtml) markdownHtml = '<div style="color:#34A853;font-size:11px">Perfect Audit!</div>';
+    if (custMarkdowns.length > 0) markdownHtml += '<div class="q-markdown-chip cust">Cust: ' + custMarkdowns.join(', ') + '</div>';
+    if (busMarkdowns.length > 0) markdownHtml += '<div class="q-markdown-chip bus">Bus: ' + busMarkdowns.join(', ') + '</div>';
+    if (compMarkdowns.length > 0) markdownHtml += '<div class="q-markdown-chip comp">Comp: ' + compMarkdowns.join(', ') + '</div>';
+    if (!markdownHtml) markdownHtml = '<div class="q-perfect">Perfect Audit!</div>';
 
     return '<tr>' +
       '<td>' +
-        '<a href="https://cases.connect.corp.google.com/' + c.caseId + '" target="_blank" style="color:#4285F4;font-weight:600">' + c.caseId + '</a>' +
-        '<div style="font-size:10px;color:var(--text-hint)">' + c.reviewDate + '</div>' +
+        '<a href="https://cases.connect.corp.google.com/' + c.caseId + '" target="_blank" class="q-case-link">' + c.caseId + '</a>' +
+        '<div style="font-size:10px;color:var(--text-hint);margin-top:2px">' + c.reviewDate + '</div>' +
       '</td>' +
-      '<td>' + (c.customer == 1 ? '✅' : '❌') + '</td>' +
-      '<td>' + (c.business == 1 ? '✅' : '❌') + '</td>' +
-      '<td>' + (c.compliance == 1 ? '✅' : '❌') + '</td>' +
+      '<td>' + (c.customer == 1 ? Q_ICONS.CHECK : Q_ICONS.X) + '</td>' +
+      '<td>' + (c.business == 1 ? Q_ICONS.CHECK : Q_ICONS.X) + '</td>' +
+      '<td>' + (c.compliance == 1 ? Q_ICONS.CHECK : Q_ICONS.X) + '</td>' +
       '<td style="text-align:left">' + markdownHtml + '</td>' +
-      '<td><button class="btn btn-sm btn-secondary" onclick="toggleQualityDetails(' + i + ')">Details</button></td>' +
+      '<td><button class="q-btn-sm" onclick="toggleQualityDetails(' + i + ')">Details</button></td>' +
     '</tr>' +
-    '<tr id="quality-details-' + i + '" style="display:none"><td colspan="6" style="padding:15px;background:var(--surface-2);text-align:left">' +
-      '<div style="font-size:12px;font-weight:600;margin-bottom:8px">Reviewer Comments:</div>' +
-      '<div style="font-size:12px;font-style:italic;color:var(--text-secondary);margin-bottom:12px">"' + (c.comments || 'No comments provided.') + '"</div>' +
-      buildParameterChecklist(c.details) +
+    '<tr id="quality-details-' + i + '" style="display:none"><td colspan="6" class="q-details-row">' +
+      '<div class="q-details-content">' +
+        '<div style="font-weight:700;margin-bottom:8px;font-size:13px">Reviewer Comments:</div>' +
+        '<div class="q-comments">"' + (c.comments || 'No comments provided.') + '"</div>' +
+        buildParameterChecklist(c.details) +
+      '</div>' +
     '</td></tr>';
   }).join('');
 
-  return '<div class="csat-card-sm" style="margin-top:10px">' +
-    '<div class="csat-p-title">Case Lookup & Audit Details</div>' +
-    '<table class="csat-ag-tbl"><thead><tr>' +
+  return '<div class="q-card mt-24">' +
+    '<div class="q-card-title">Case Lookup & Audit Details</div>' +
+    '<div class="q-table-container"><table class="q-table"><thead><tr>' +
       '<th style="text-align:left">Case ID</th><th>Cust</th><th>Bus</th><th>Comp</th><th style="text-align:left">Markdowns</th><th></th>' +
-    '</tr></thead><tbody>' + rows + '</tbody></table>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
   '</div>';
 }
 
 function buildParameterChecklist(details) {
-  var html = '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px">';
+  var html = '<div class="q-checklist-grid">';
 
-  // Customer
-  html += '<div><div style="font-size:11px;font-weight:700;color:#4285F4;margin-bottom:5px">CUSTOMER</div>';
-  Object.entries(details.customer).forEach(([k, v]) => {
-    html += '<div style="font-size:11px;display:flex;justify-content:space-between;border-bottom:1px solid var(--border)"><span>' + k + '</span><span>' + (String(v).toLowerCase() === 'yes' ? '✅' : (String(v).toLowerCase() === 'no' ? '❌' : '—')) + '</span></div>';
-  });
-  html += '</div>';
+  const sections = [
+    { title: 'CUSTOMER', color: Q_COLORS.BLUE, data: details.customer },
+    { title: 'BUSINESS', color: Q_COLORS.GREEN, data: details.business },
+    { title: 'COMPLIANCE', color: Q_COLORS.RED, data: details.compliance }
+  ];
 
-  // Business
-  html += '<div><div style="font-size:11px;font-weight:700;color:#34A853;margin-bottom:5px">BUSINESS</div>';
-  Object.entries(details.business).forEach(([k, v]) => {
-    html += '<div style="font-size:11px;display:flex;justify-content:space-between;border-bottom:1px solid var(--border)"><span>' + k + '</span><span>' + (String(v).toLowerCase() === 'yes' ? '✅' : (String(v).toLowerCase() === 'no' ? '❌' : '—')) + '</span></div>';
+  sections.forEach(s => {
+    html += '<div><div class="q-checklist-header" style="color:' + s.color + '">' + s.title + '</div>';
+    Object.entries(s.data).forEach(([k, v]) => {
+      var isPass = String(v).toLowerCase() === 'yes';
+      var isFail = String(v).toLowerCase() === 'no';
+      html += '<div class="q-checklist-item ' + (isFail ? 'fail' : '') + '"><span>' + k + '</span>' +
+              '<span>' + (isPass ? 'PASS' : (isFail ? 'FAIL' : '—')) + '</span></div>';
+    });
+    html += '</div>';
   });
-  html += '</div>';
-
-  // Compliance
-  html += '<div><div style="font-size:11px;font-weight:700;color:#EA4335;margin-bottom:5px">COMPLIANCE</div>';
-  Object.entries(details.compliance).forEach(([k, v]) => {
-    html += '<div style="font-size:11px;display:flex;justify-content:space-between;border-bottom:1px solid var(--border)"><span>' + k + '</span><span>' + (String(v).toLowerCase() === 'yes' ? '✅' : (String(v).toLowerCase() === 'no' ? '❌' : '—')) + '</span></div>';
-  });
-  html += '</div>';
 
   html += '</div>';
   return html;
@@ -529,3 +525,78 @@ function toggleQualityDetails(idx) {
 var Q_TARGETS = { CUSTOMER: 95, BUSINESS: 90, COMPLIANCE: 99.5 };
 
 </script>
+
+<style>
+/* ── Apple HIG Quality Dashboard Styles ── */
+.q-container { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Myriad Set Pro", "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--text-primary); }
+
+.q-topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.q-page-title { font-size: 24px; font-weight: 700; display: flex; align-items: center; gap: 12px; letter-spacing: -0.5px; }
+.q-icon-badge { width: 32px; height: 32px; background: #007AFF; border-radius: 8px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,122,255,0.3); }
+
+.q-controls { display: flex; align-items: center; }
+.q-pill-select { background: var(--surface-2); border: 1px solid var(--border); border-radius: 20px; padding: 6px 16px; font-size: 13px; font-weight: 600; cursor: pointer; outline: none; }
+
+.q-tab-row { display: flex; background: var(--surface-2); padding: 4px; border-radius: 12px; margin-bottom: 24px; width: fit-content; border: 1px solid var(--border); }
+.q-tab { display: flex; align-items: center; gap: 8px; padding: 8px 24px; border-radius: 9px; cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text-secondary); transition: all 0.2s ease; }
+.q-tab.active { background: var(--surface); color: var(--text-primary); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.q-tab svg { opacity: 0.7; }
+.q-tab.active svg { color: #007AFF; opacity: 1; }
+
+.q-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+.q-apple-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; transition: transform 0.2s ease; }
+.q-apple-card:hover { transform: translateY(-2px); }
+.q-card-label { font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+.q-card-value { font-size: 36px; font-weight: 800; letter-spacing: -1px; margin-bottom: 4px; line-height: 1.1; }
+.q-card-status { display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.q-card-status.on-target { color: #34C759; }
+.q-card-status.below-target { color: #FF3B30; }
+.q-card-target { font-size: 11px; color: var(--text-hint); font-weight: 500; }
+
+.q-score-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.q-chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.q-chart-card { display: flex; flex-direction: column; min-height: 400px; }
+.q-card-title { font-size: 16px; font-weight: 700; margin-bottom: 20px; color: var(--text-primary); letter-spacing: -0.2px; }
+
+.q-select { background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: 8px; padding: 8px 12px; color: var(--text-primary); font-weight: 500; cursor: pointer; outline: none; }
+
+.q-table-container { overflow-x: auto; margin: -10px; padding: 10px; }
+.q-table { width: 100%; border-collapse: collapse; }
+.q-table th { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-hint); padding: 12px 16px; border-bottom: 1px solid var(--border); text-align: center; }
+.q-table td { padding: 16px; border-bottom: 1px solid var(--border); text-align: center; font-size: 14px; transition: background 0.1s; }
+.q-table tr:hover td { background: var(--surface-2); cursor: pointer; }
+
+.q-case-link { color: #007AFF; font-weight: 700; text-decoration: none; border-bottom: 1px solid transparent; }
+.q-case-link:hover { border-bottom-color: #007AFF; }
+
+.q-markdown-chip { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; margin: 2px; line-height: 1.4; }
+.q-markdown-chip.cust { background: rgba(0,122,255,0.1); color: #007AFF; }
+.q-markdown-chip.bus { background: rgba(255,149,0,0.1); color: #FF9500; }
+.q-markdown-chip.comp { background: rgba(255,59,48,0.1); color: #FF3B30; }
+.q-perfect { color: #34C759; font-weight: 700; font-size: 12px; }
+
+.q-btn-sm { background: var(--surface-3); border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; color: var(--text-primary); cursor: pointer; transition: all 0.2s; }
+.q-btn-sm:hover { background: var(--border-strong); }
+
+.q-details-row { background: var(--surface-2); padding: 0 !important; }
+.q-details-content { padding: 24px; border-left: 4px solid #007AFF; }
+.q-comments { font-size: 14px; line-height: 1.6; color: var(--text-secondary); font-style: italic; margin-bottom: 24px; background: var(--surface); padding: 16px; border-radius: 12px; }
+
+.q-checklist-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
+.q-checklist-header { font-size: 12px; font-weight: 800; letter-spacing: 1px; margin-bottom: 12px; border-bottom: 2px solid currentColor; padding-bottom: 4px; }
+.q-checklist-item { display: flex; justify-content: space-between; font-size: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+.q-checklist-item.fail { color: #FF3B30; font-weight: 600; }
+.q-checklist-item span:last-child { font-weight: 800; font-family: monospace; }
+
+.q-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 64px; gap: 16px; color: var(--text-hint); }
+.q-spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: #007AFF; border-radius: 50%; animation: q-spin 0.8s linear infinite; }
+@keyframes q-spin { to { transform: rotate(360deg); } }
+
+.q-empty { text-align: center; padding: 80px 40px; color: var(--text-hint); background: var(--surface-2); border-radius: 20px; border: 2px dashed var(--border); }
+
+@media (max-width: 1024px) {
+  .q-score-row { grid-template-columns: 1fr 1fr; }
+  .q-chart-grid { grid-template-columns: 1fr; }
+  .q-checklist-grid { grid-template-columns: 1fr; gap: 16px; }
+}
+</style>
