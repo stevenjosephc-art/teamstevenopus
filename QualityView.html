@@ -1,44 +1,50 @@
 <script>
 // ============================================================
-// QualityView — Quality Audit Dashboard (Apple HIG Design)
+// QualityView — Quality Audit Dashboard (ES5 Robust Version)
 // ============================================================
 
-const Q_ICONS = {
+var Q_ICONS = {
   USER: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:18px;height:18px"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>',
   TEAM: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:18px;height:18px"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0  4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.25 0 1 1-5.25 0 2.625 2.25 0 0 1 5.25 0Z" /></svg>',
   ALL: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:18px;height:18px"><path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 0 0 8.716-6.747M12 21a9.004 9.004 0 0 1-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.003 0 0 1 7.843 4.582M12 3a8.997 8.997 0 0 0-7.843 4.582m15.686 0A11.953 11.953 0 0 1 12 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0 1 21 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0 1 12 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 0 1 3 12c0-1.605.42-3.113 1.157-4.418" /></svg>',
   CHECK: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="#34C759" style="width:20px;height:20px"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.857-9.809a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 1 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z" clip-rule="evenodd" /></svg>',
-  X: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="#FF3B30" style="width:20px;height:20px"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM8.28 7.22a.75.75 0 0 0-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 1 0-1.06 1.06L10 11.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L11.06 10l1.72-1.72a.75.75 0 0 0-1.06-1.06L10 8.94 8.28 7.22Z" clip-rule="evenodd" /></svg>',
+  X: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="#FF3B30" style="width:20px;height:20px"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM8.28 7.22a.75.75 0 0 0-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 1 0 1.06 1.06L10 11.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L11.06 10l1.72-1.72a.75.75 0 0 0-1.06-1.06L10 8.94 8.28 7.22Z" clip-rule="evenodd" /></svg>',
   DASHBOARD: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" style="width:14px;height:14px"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>',
   COPY: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" /></svg>',
   EXPORT: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:18px;height:18px"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" /></svg>'
 };
 
 /**
- * CLIENT CACHE SYSTEM
+ * QUALITY LOCAL CACHE SYSTEM
  */
-const ClientCache = {
+var QualityLocalCache = {
   prefix: 'q_cache_',
   get: function(key) {
-    const item = localStorage.getItem(this.prefix + key);
+    var item = localStorage.getItem(this.prefix + key);
     if (!item) return null;
-    const data = JSON.parse(item);
-    if (Date.now() > data.expiry) {
-      localStorage.removeItem(this.prefix + key);
-      return null;
-    }
-    return data.value;
+    try {
+      var data = JSON.parse(item);
+      if (Date.now() > data.expiry) {
+        localStorage.removeItem(this.prefix + key);
+        return null;
+      }
+      return data.value;
+    } catch(e) { return null; }
   },
-  set: function(key, value, ttlMs = 1800000) { // 30 min default
-    const data = {
-      value: value,
-      expiry: Date.now() + ttlMs
-    };
-    localStorage.setItem(this.prefix + key, JSON.stringify(data));
+  set: function(key, value, ttlMs) {
+    var ttl = ttlMs || 1800000; // 30 min default
+    try {
+      var data = {
+        value: value,
+        expiry: Date.now() + ttl
+      };
+      localStorage.setItem(this.prefix + key, JSON.stringify(data));
+    } catch(e) {}
   },
   clear: function() {
-    Object.keys(localStorage).forEach(k => {
-      if (k.startsWith(this.prefix)) localStorage.removeItem(k);
+    var self = this;
+    Object.keys(localStorage).forEach(function(k) {
+      if (k.indexOf(self.prefix) === 0) localStorage.removeItem(k);
     });
   }
 };
@@ -53,21 +59,30 @@ var Q_COLORS = {
 };
 
 function renderQualityView() {
-  var el = document.getElementById('view-quality');
-  el.innerHTML = buildQualityShell();
+  try {
+    var el = document.getElementById('view-quality');
+    if (!el) return;
+    el.innerHTML = buildQualityShell();
 
-  // Try local cache for months
-  const cachedMonths = ClientCache.get('months');
-  if (cachedMonths) {
-    initQualityWithMonths(cachedMonths);
+    // Try local cache for months
+    var cachedMonths = QualityLocalCache.get('months');
+    if (cachedMonths) {
+      initQualityWithMonths(cachedMonths);
+    }
+
+    google.script.run
+      .withSuccessHandler(function(months) {
+        if (!months) return;
+        QualityLocalCache.set('months', months);
+        initQualityWithMonths(months);
+      })
+      .withFailureHandler(function(err) {
+        console.error('Failed to load quality months:', err);
+      })
+      .clientGetAvailableQualityMonths();
+  } catch(e) {
+    console.error('Error rendering quality view:', e);
   }
-
-  google.script.run
-    .withSuccessHandler(function(months) {
-      ClientCache.set('months', months);
-      initQualityWithMonths(months);
-    })
-    .clientGetAvailableQualityMonths();
 }
 
 function initQualityWithMonths(months) {
@@ -80,19 +95,21 @@ function initQualityWithMonths(months) {
   }).join('');
 
   window._qualitySelectedMonth = months[0] || '';
-  var role = APP.session ? APP.session.role : 'agent';
+  var role = (APP && APP.session) ? APP.session.role : 'agent';
   var defaultTab = (role === 'manager' || role === 'supervisor') ? 'manager' : 'agent';
 
   switchQualityTab(defaultTab);
 
   // Background pre-fetch next few months
-  months.slice(1, 4).forEach(m => {
-    setTimeout(() => preWarmQualityCache(m), 2000);
-  });
+  if (months.length > 1) {
+    months.slice(1, 4).forEach(function(m) {
+      setTimeout(function() { preWarmQualityCache(m); }, 2000);
+    });
+  }
 }
 
 function buildQualityShell() {
-  var role = APP.session ? APP.session.role : 'agent';
+  var role = (APP && APP.session) ? APP.session.role : 'agent';
   var isMgmt = role === 'manager' || role === 'supervisor';
 
   var tabs =
@@ -140,7 +157,7 @@ function qualityTab(id, icon, label, active) {
 }
 
 function switchQualityTab(id) {
-  var role = APP.session ? APP.session.role : 'agent';
+  var role = (APP && APP.session) ? APP.session.role : 'agent';
 
   ['agent','manager','allteams'].forEach(function(t) {
     var panel = document.getElementById('quality-panel-' + t);
@@ -161,14 +178,14 @@ function switchQualityTab(id) {
   var panel = document.getElementById('quality-panel-' + id);
   var month = window._qualitySelectedMonth || '';
 
-  let cacheKey = id + '_' + month;
+  var cacheKey = id + '_' + month;
   if (id === 'agent') {
     var agentPicker = document.getElementById('quality-agent-picker');
     var agentLdap = agentPicker ? agentPicker.value : (APP.session ? APP.session.ldap : '');
     cacheKey += '_' + agentLdap;
   }
 
-  const cached = ClientCache.get(cacheKey);
+  var cached = QualityLocalCache.get(cacheKey);
   if (cached) {
     renderQualityFromData(id, panel, cached);
     // Silent background refresh
@@ -182,10 +199,8 @@ function switchQualityTab(id) {
 }
 
 function refreshQualityData(id, month, cacheKey) {
-  const handler = (d) => {
-    ClientCache.set(cacheKey, d);
-    // If user is still on this view, check if data changed significantly and update charts?
-    // Usually silent refresh is enough for next visit.
+  var handler = function(d) {
+    QualityLocalCache.set(cacheKey, d);
   };
 
   if (id === 'agent') {
@@ -200,6 +215,7 @@ function refreshQualityData(id, month, cacheKey) {
 }
 
 function renderQualityFromData(id, panel, d) {
+  if (!panel || !d) return;
   panel.dataset.loaded = 'true';
   if (id === 'agent') {
     panel.innerHTML = buildQualityAgentView(d);
@@ -217,22 +233,27 @@ function populateQualityAgentDropdown() {
   if (!picker || picker.dataset.loaded === 'true') return;
   picker.dataset.loaded = 'true';
 
-  const cached = ClientCache.get('all_agents');
+  var cached = QualityLocalCache.get('all_agents');
   if (cached) {
     setAgentPickerOptions(picker, cached);
   }
 
   google.script.run
     .withSuccessHandler(function(agents) {
-      ClientCache.set('all_agents', agents);
+      QualityLocalCache.set('all_agents', agents);
       setAgentPickerOptions(picker, agents);
     })
     .clientGetAllAgents();
 }
 
 function setAgentPickerOptions(picker, agents) {
+  if (!picker) return;
   picker.innerHTML = '<option value="">— Select an agent —</option>';
-  (agents || []).sort((a,b) => (a.displayName||a.ldap).localeCompare(b.displayName||b.ldap)).forEach(function(a) {
+  (agents || []).sort(function(a,b) {
+     var nameA = (a.displayName || a.ldap || '').toLowerCase();
+     var nameB = (b.displayName || b.ldap || '').toLowerCase();
+     return nameA.localeCompare(nameB);
+  }).forEach(function(a) {
     var opt = document.createElement('option');
     opt.value = a.ldap;
     opt.textContent = (a.displayName || a.ldap) + ' (' + a.ldap + ')';
@@ -250,7 +271,7 @@ function switchQualityAgent(ldap) {
 
   var month = window._qualitySelectedMonth || '';
   var cacheKey = 'agent_' + month + '_' + ldap;
-  const cached = ClientCache.get(cacheKey);
+  var cached = QualityLocalCache.get(cacheKey);
   if (cached) {
     renderQualityFromData('agent', panel, cached);
     return;
@@ -259,7 +280,7 @@ function switchQualityAgent(ldap) {
   panel.innerHTML = buildSkeletonView();
   google.script.run
     .withSuccessHandler(function(d) {
-      ClientCache.set(cacheKey, d);
+      QualityLocalCache.set(cacheKey, d);
       renderQualityFromData('agent', panel, d);
     })
     .clientGetMyQuality(ldap, month);
@@ -279,34 +300,35 @@ function onQualityMonthChange(month) {
 }
 
 function loadQualityPanel(id, panel) {
+  if (!panel) return;
   panel.innerHTML = buildSkeletonView();
   var month = window._qualitySelectedMonth || '';
 
   if (id === 'agent') {
     var agentPicker = document.getElementById('quality-agent-picker');
     var agentLdap = agentPicker ? agentPicker.value : '';
-    var role = APP.session ? APP.session.role : 'agent';
+    var role = (APP && APP.session) ? APP.session.role : 'agent';
     if ((role === 'manager' || role === 'supervisor') && !agentLdap) {
        panel.innerHTML = '<div class="q-empty"><h3>Please select an agent to view their scores</h3></div>';
        return;
     }
     google.script.run
       .withSuccessHandler(function(d) {
-        ClientCache.set('agent_' + month + '_' + (agentLdap || APP.session.ldap), d);
+        QualityLocalCache.set('agent_' + month + '_' + (agentLdap || APP.session.ldap), d);
         renderQualityFromData('agent', panel, d);
       })
       .clientGetMyQuality(agentLdap, month);
   } else if (id === 'manager') {
     google.script.run
       .withSuccessHandler(function(d) {
-        ClientCache.set('manager_' + month, d);
+        QualityLocalCache.set('manager_' + month, d);
         renderQualityFromData('manager', panel, d);
       })
       .clientGetTeamQuality(month);
   } else if (id === 'allteams') {
     google.script.run
       .withSuccessHandler(function(d) {
-        ClientCache.set('allteams_' + month, d);
+        QualityLocalCache.set('allteams_' + month, d);
         renderQualityFromData('allteams', panel, d);
       })
       .clientGetAllTeamsQuality(month);
@@ -336,22 +358,24 @@ function buildQualityAgentView(d) {
   var s = d.stats;
 
   // Coaching Summary
-  let coachingHtml = '';
+  var coachingHtml = '';
   if (s.groupedParams) {
-    const allParams = [].concat(s.groupedParams.customer, s.groupedParams.business, s.groupedParams.compliance);
-    const top3Fails = allParams
-      .filter(p => p.score !== null && p.score < 95)
-      .sort((a,b) => a.score - b.score)
+    var allParams = [].concat(s.groupedParams.customer, s.groupedParams.business, s.groupedParams.compliance);
+    var top3Fails = allParams
+      .filter(function(p) { return p.score !== null && p.score < 95; })
+      .sort(function(a,b) { return a.score - b.score; })
       .slice(0, 3);
 
     if (top3Fails.length > 0) {
       coachingHtml = '<div class="q-card q-coaching-card mb-24">' +
         '<div class="q-card-title">Top Improvement Areas</div>' +
         '<div class="q-coaching-grid">' +
-          top3Fails.map(p => '<div class="q-coaching-item">' +
-            '<div class="q-coaching-score">' + p.score.toFixed(0) + '%</div>' +
-            '<div class="q-coaching-name">' + p.name.replace(/_/g,' ') + '</div>' +
-          '</div>').join('') +
+          top3Fails.map(function(p) {
+            return '<div class="q-coaching-item">' +
+              '<div class="q-coaching-score">' + (p.score||0).toFixed(0) + '%</div>' +
+              '<div class="q-coaching-name">' + p.name.replace(/_/g,' ').toLowerCase() + '</div>' +
+            '</div>';
+          }).join('') +
         '</div>' +
       '</div>';
     }
@@ -395,23 +419,25 @@ function buildQualityAgentView(d) {
 }
 
 function buildGroupedParameterView(grouped) {
+  if (!grouped) return '';
   var html = '<div class="q-grouped-params">';
-  const sections = [
+  var sections = [
     { label: 'Customer Critical', key: 'customer', color: Q_COLORS.BLUE },
     { label: 'Business Critical', key: 'business', color: Q_COLORS.GREEN },
     { label: 'Compliance Critical', key: 'compliance', color: Q_COLORS.RED }
   ];
 
-  sections.forEach(sec => {
+  sections.forEach(function(sec) {
+    if (!grouped[sec.key]) return;
     html += '<div class="q-param-section">' +
       '<div class="q-param-header" style="color:' + sec.color + '">' + sec.label + '</div>' +
       '<div class="q-param-list">';
-    grouped[sec.key].forEach(p => {
+    grouped[sec.key].forEach(function(p) {
       var score = p.score;
       var scoreText = score !== null ? score.toFixed(0) + '%' : '—';
       var color = score === null ? '#888' : (score >= 95 ? Q_COLORS.GREEN : (score >= 80 ? Q_COLORS.ORANGE : Q_COLORS.RED));
       html += '<div class="q-param-row clickable" onclick="filterByParameter(\'' + p.name + '\')">' +
-        '<span class="q-param-name" title="' + p.name.replace(/_/g, ' ') + '">' + p.name.replace(/_/g, ' ') + '</span>' +
+        '<span class="q-param-name" title="' + p.name.replace(/_/g, ' ') + '">' + p.name.replace(/_/g, ' ').toLowerCase() + '</span>' +
         '<div class="q-param-bar-container"><div class="q-param-bar" style="width:' + (score||0) + '%;background:' + color + '"></div></div>' +
         '<span class="q-param-val" style="color:' + color + '">' + scoreText + '</span>' +
       '</div>';
@@ -424,28 +450,29 @@ function buildGroupedParameterView(grouped) {
 }
 
 function filterByParameter(paramName) {
-  const table = document.getElementById('quality-case-table');
+  var table = document.getElementById('quality-case-table');
   if (!table) return;
 
   // Find cases where this parameter is 'No'
-  const rows = table.querySelectorAll('tbody > tr:not(.q-details-row)');
-  rows.forEach(r => {
-    const idx = r.dataset.index;
-    const caseData = window._currentCaseLog[idx];
+  var rows = table.querySelectorAll('tbody > tr:not(.q-details-row)');
+  rows.forEach(function(r) {
+    var idx = r.dataset.index;
+    var caseData = window._currentCaseLog ? window._currentCaseLog[idx] : null;
     if (!caseData) return;
 
     // Check if parameter is 'no' in any critical group (using uppercase keys from service)
-    const pKey = paramName.toUpperCase();
-    const isFail =
-      (String(caseData.details.customer[pKey]).toLowerCase() === 'no') ||
-      (String(caseData.details.business[pKey]).toLowerCase() === 'no') ||
-      (String(caseData.details.compliance[pKey]).toLowerCase() === 'no');
+    var pKey = paramName.toUpperCase();
+    var isFail =
+      (caseData.details.customer[pKey] && String(caseData.details.customer[pKey]).toLowerCase() === 'no') ||
+      (caseData.details.business[pKey] && String(caseData.details.business[pKey]).toLowerCase() === 'no') ||
+      (caseData.details.compliance[pKey] && String(caseData.details.compliance[pKey]).toLowerCase() === 'no');
 
     r.style.display = isFail ? 'table-row' : 'none';
   });
 
   // Highlight the filter state
-  document.querySelector('.q-filters .q-filter-btn.active').classList.remove('active');
+  var activeBtn = document.querySelector('.q-filters .q-filter-btn.active');
+  if (activeBtn) activeBtn.classList.remove('active');
 
   // Scroll to table
   table.scrollIntoView({ behavior: 'smooth' });
@@ -468,7 +495,7 @@ function buildAppleScoreCard(label, score, target, color, isCounter) {
 }
 
 function renderQualityCharts(d) {
-  if (!d || !d.stats) return;
+  if (!d || !d.stats || !window.ApexCharts) return;
   var s = d.stats;
 
   // Radar Chart - Larger & Responsive
@@ -496,18 +523,22 @@ function renderQualityCharts(d) {
 }
 
 function renderTrendChart(elId, data) {
+  if (!data || !data.length || !window.ApexCharts) return;
+  var el = document.getElementById(elId);
+  if (!el) return;
+
   var options = {
     series: [
-      { name: 'Average QA', data: data.map(t => t.avg.toFixed(1)) },
-      { name: 'Customer', data: data.map(t => t.customer.toFixed(1)) },
-      { name: 'Business', data: data.map(t => t.business.toFixed(1)) },
-      { name: 'Compliance', data: data.map(t => t.compliance.toFixed(1)) }
+      { name: 'Average QA', data: data.map(function(t) { return (t.avg || 0).toFixed(1); }) },
+      { name: 'Customer', data: data.map(function(t) { return (t.customer || 0).toFixed(1); }) },
+      { name: 'Business', data: data.map(function(t) { return (t.business || 0).toFixed(1); }) },
+      { name: 'Compliance', data: data.map(function(t) { return (t.compliance || 0).toFixed(1); }) }
     ],
     chart: { type: 'area', height: 350, toolbar: { show: false } },
     colors: [Q_COLORS.BLUE, Q_COLORS.INDIGO, Q_COLORS.GREEN, Q_COLORS.RED],
     dataLabels: { enabled: false },
     stroke: { curve: 'smooth', width: 3 },
-    xaxis: { categories: data.map(t => t.label), labels: { style: { colors: 'var(--text-hint)' } } },
+    xaxis: { categories: data.map(function(t) { return t.label; }), labels: { style: { colors: 'var(--text-hint)' } } },
     yaxis: { max: 100, labels: { style: { colors: 'var(--text-hint)' } } },
     fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.1 } },
     annotations: {
@@ -520,7 +551,6 @@ function renderTrendChart(elId, data) {
     tooltip: { theme: 'dark' },
     grid: { borderColor: 'var(--border)' }
   };
-  var el = document.getElementById(elId);
   el.innerHTML = '';
   new ApexCharts(el, options).render();
 }
@@ -573,40 +603,47 @@ function buildQualityManagerView(d) {
 
 function buildHeatmapView(agents) {
   // Identify common failing parameters across team
-  const paramFails = {};
-  agents.forEach(a => {
-    Object.entries(a.stats.params).forEach(([p, score]) => {
+  var paramFails = {};
+  agents.forEach(function(a) {
+    if (!a.stats || !a.stats.params) return;
+    Object.keys(a.stats.params).forEach(function(p) {
+      var score = a.stats.params[p];
       if (score !== null && score < 95) {
         paramFails[p] = (paramFails[p] || 0) + 1;
       }
     });
   });
 
-  const sorted = Object.entries(paramFails).sort((a,b) => b[1] - a[1]).slice(0, 5);
+  var sorted = Object.keys(paramFails).map(function(k) {
+    return { name: k, count: paramFails[k] };
+  }).sort(function(a,b) { return b.count - a.count; }).slice(0, 5);
+
   if (sorted.length === 0) return '';
 
   return '<div class="q-card mt-24">' +
     '<div class="q-card-title">Team Risk Areas (systemic failures)</div>' +
     '<div class="q-heatmap-grid">' +
-      sorted.map(([name, count]) => '<div class="q-heatmap-item">' +
-        '<div class="q-heatmap-count">' + count + ' agents</div>' +
-        '<div class="q-heatmap-name">' + name.replace(/_/g,' ') + '</div>' +
-      '</div>').join('') +
+      sorted.map(function(item) {
+        return '<div class="q-heatmap-item">' +
+          '<div class="q-heatmap-count">' + item.count + ' agents</div>' +
+          '<div class="q-heatmap-name">' + item.name.replace(/_/g,' ').toLowerCase() + '</div>' +
+        '</div>';
+      }).join('') +
     '</div>' +
   '</div>';
 }
 
 function renderTeamQualityCharts(d) {
-  if (!d || !d.agents || d.agents.length === 0) return;
+  if (!d || !d.agents || d.agents.length === 0 || !window.ApexCharts) return;
 
   var agents = d.agents.slice(0, 15);
-  var categories = agents.map(a => a.displayName || a.ldap);
+  var categories = agents.map(function(a) { return a.displayName || a.ldap; });
 
   var options = {
     series: [
-      { name: 'Customer', data: agents.map(a => a.stats.customer.toFixed(1)) },
-      { name: 'Business', data: agents.map(a => a.stats.business.toFixed(1)) },
-      { name: 'Compliance', data: agents.map(a => a.stats.compliance.toFixed(1)) }
+      { name: 'Customer', data: agents.map(function(a) { return a.stats.customer.toFixed(1); }) },
+      { name: 'Business', data: agents.map(function(a) { return a.stats.business.toFixed(1); }) },
+      { name: 'Compliance', data: agents.map(function(a) { return a.stats.compliance.toFixed(1); }) }
     ],
     chart: { type: 'bar', height: 500, toolbar: { show: false }, stacked: false, background: 'transparent' },
     plotOptions: { bar: { horizontal: false, columnWidth: '60%', borderRadius: 6 } },
@@ -616,7 +653,7 @@ function renderTeamQualityCharts(d) {
     colors: [Q_COLORS.BLUE, Q_COLORS.GREEN, Q_COLORS.RED],
     legend: { position: 'top', horizontalAlign: 'right', labels: { colors: 'var(--text-secondary)' } },
     grid: { borderColor: 'var(--border)' },
-    tooltip: { theme: 'dark', y: { formatter: val => val + "%" } }
+    tooltip: { theme: 'dark', y: { formatter: function(val) { return val + "%"; } } }
   };
 
   new ApexCharts(document.querySelector("#team-quality-bar-chart"), options).render();
@@ -648,7 +685,7 @@ function buildQualityAgentScorecard(agents) {
 function buildQualityAllTeamsView(d) {
   if (!d || !d.teams || d.teams.length === 0) return '<div class="q-empty"><h3>No cross-team data available</h3></div>';
 
-  setTimeout(() => renderAllTeamsQualityChart(d), 100);
+  setTimeout(function() { renderAllTeamsQualityChart(d); }, 100);
 
   return (
     '<div class="q-card mb-24">' +
@@ -681,23 +718,26 @@ function buildQualityAllTeamsView(d) {
 
 function renderAllTeamsQualityChart(d) {
   var teams = d.teams;
+  var el = document.querySelector("#all-teams-quality-chart");
+  if (!el || !window.ApexCharts) return;
+
   var options = {
     series: [
-      { name: 'Customer', data: teams.map(t => t.stats.customer.toFixed(1)) },
-      { name: 'Business', data: teams.map(t => t.stats.business.toFixed(1)) },
-      { name: 'Compliance', data: teams.map(t => t.stats.compliance.toFixed(1)) }
+      { name: 'Customer', data: teams.map(function(t) { return t.stats.customer.toFixed(1); }) },
+      { name: 'Business', data: teams.map(function(t) { return t.stats.business.toFixed(1); }) },
+      { name: 'Compliance', data: teams.map(function(t) { return t.stats.compliance.toFixed(1); }) }
     ],
     chart: { type: 'bar', height: 450, toolbar: { show: false }, background: 'transparent' },
     plotOptions: { bar: { horizontal: false, columnWidth: '55%', borderRadius: 8 } },
     dataLabels: { enabled: false },
-    xaxis: { categories: teams.map(t => t.teamName), labels: { style: { colors: 'var(--text-hint)', fontWeight: 600 } } },
+    xaxis: { categories: teams.map(function(t) { return t.teamName; }), labels: { style: { colors: 'var(--text-hint)', fontWeight: 600 } } },
     yaxis: { title: { text: 'Score %', style: { color: 'var(--text-hint)' } }, max: 100, labels: { style: { colors: 'var(--text-hint)' } } },
     colors: [Q_COLORS.BLUE, Q_COLORS.GREEN, Q_COLORS.RED],
     legend: { position: 'top', horizontalAlign: 'right', labels: { colors: 'var(--text-secondary)' } },
     grid: { borderColor: 'var(--border)' },
-    tooltip: { theme: 'dark', y: { formatter: val => val + "%" } }
+    tooltip: { theme: 'dark', y: { formatter: function(val) { return val + "%"; } } }
   };
-  new ApexCharts(document.querySelector("#all-teams-quality-chart"), options).render();
+  new ApexCharts(el, options).render();
 }
 
 // ── CASE LOG & LOOKUP ─────────────────────────────────────────────────────
@@ -707,9 +747,9 @@ function buildQualityCaseLogTable(cases) {
   window._currentCaseLog = cases;
 
   var rows = cases.map(function(c, i) {
-    var custMarkdowns = Object.entries(c.details.customer).filter(([k, v]) => String(v).toLowerCase() === 'no').map(([k, v]) => k);
-    var busMarkdowns = Object.entries(c.details.business).filter(([k, v]) => String(v).toLowerCase() === 'no').map(([k, v]) => k);
-    var compMarkdowns = Object.entries(c.details.compliance).filter(([k, v]) => String(v).toLowerCase() === 'no').map(([k, v]) => k);
+    var custMarkdowns = Object.keys(c.details.customer).filter(function(k) { return String(c.details.customer[k]).toLowerCase() === 'no'; });
+    var busMarkdowns = Object.keys(c.details.business).filter(function(k) { return String(c.details.business[k]).toLowerCase() === 'no'; });
+    var compMarkdowns = Object.keys(c.details.compliance).filter(function(k) { return String(c.details.compliance[k]).toLowerCase() === 'no'; });
 
     var markdownHtml = '';
     if (custMarkdowns.length > 0) markdownHtml += '<div class="q-markdown-chip cust">Cust: ' + custMarkdowns.join(', ') + '</div>';
@@ -757,21 +797,23 @@ function buildQualityCaseLogTable(cases) {
 }
 
 function searchQualityTable(q) {
-  const table = document.getElementById('quality-case-table');
-  const rows = table.querySelectorAll('tbody > tr:not(.q-details-row)');
-  const query = q.toLowerCase();
+  var table = document.getElementById('quality-case-table');
+  if (!table) return;
+  var rows = table.querySelectorAll('tbody > tr:not(.q-details-row)');
+  var query = q.toLowerCase();
 
-  rows.forEach(r => {
-    const idx = r.dataset.index;
-    const caseData = window._currentCaseLog[idx];
-    const textMatch = caseData.caseId.toLowerCase().includes(query) || (caseData.comments || '').toLowerCase().includes(query);
+  rows.forEach(function(r) {
+    var idx = r.dataset.index;
+    var caseData = window._currentCaseLog ? window._currentCaseLog[idx] : null;
+    if (!caseData) return;
+    var textMatch = caseData.caseId.toLowerCase().indexOf(query) !== -1 || (caseData.comments || '').toLowerCase().indexOf(query) !== -1;
     r.style.display = textMatch ? 'table-row' : 'none';
   });
 }
 
 function copyToClipboard(text) {
-  navigator.clipboard.writeText(text).then(() => {
-    showToast('Case ID ' + text + ' copied!');
+  navigator.clipboard.writeText(text).then(function() {
+    if (typeof showToast === 'function') showToast('Case ID ' + text + ' copied!');
   });
 }
 
@@ -780,12 +822,12 @@ function filterQualityTable(filter, btn) {
   if (!table) return;
 
   var btns = btn.parentNode.querySelectorAll('.q-filter-btn');
-  btns.forEach(b => b.classList.remove('active'));
+  btns.forEach(function(b) { b.classList.remove('active'); });
   btn.classList.add('active');
 
   var rows = table.querySelectorAll('tbody > tr');
-  rows.forEach(row => {
-    if (row.classList.contains('q-details-row') || row.id.startsWith('quality-details-')) {
+  rows.forEach(function(row) {
+    if (row.classList.contains('q-details-row') || row.id.indexOf('quality-details-') === 0) {
        row.style.display = 'none'; // Always close details when filtering
        return;
     }
@@ -804,20 +846,23 @@ function filterQualityTable(filter, btn) {
 }
 
 function buildParameterChecklist(details) {
+  if (!details) return '';
   var html = '<div class="q-checklist-grid">';
 
-  const sections = [
+  var sections = [
     { title: 'CUSTOMER', color: Q_COLORS.BLUE, data: details.customer },
     { title: 'BUSINESS', color: Q_COLORS.GREEN, data: details.business },
     { title: 'COMPLIANCE', color: Q_COLORS.RED, data: details.compliance }
   ];
 
-  sections.forEach(s => {
+  sections.forEach(function(s) {
+    if (!s.data) return;
     html += '<div><div class="q-checklist-header" style="color:' + s.color + '">' + s.title + '</div>';
-    Object.entries(s.data).forEach(([k, v]) => {
+    Object.keys(s.data).forEach(function(k) {
+      var v = s.data[k];
       var isPass = String(v).toLowerCase() === 'yes';
       var isFail = String(v).toLowerCase() === 'no';
-      html += '<div class="q-checklist-item ' + (isFail ? 'fail' : '') + '"><span>' + k.replace(/_/g,' ') + '</span>' +
+      html += '<div class="q-checklist-item ' + (isFail ? 'fail' : '') + '"><span>' + k.replace(/_/g,' ').toLowerCase() + '</span>' +
               '<span>' + (isPass ? 'PASS' : (isFail ? 'FAIL' : '—')) + '</span></div>';
     });
     html += '</div>';
@@ -829,36 +874,37 @@ function buildParameterChecklist(details) {
 
 function toggleQualityDetails(idx) {
   var el = document.getElementById('quality-details-' + idx);
+  if (!el) return;
   el.style.display = el.style.display === 'none' ? 'table-row' : 'none';
 }
 
 function preWarmQualityCache(month) {
-  if (!month || !APP.session) return;
+  if (!month || !APP || !APP.session) return;
   google.script.run
     .withSuccessHandler(function(d) {
-       ClientCache.set('agent_' + month + '_' + APP.session.ldap, d);
+       QualityLocalCache.set('agent_' + month + '_' + APP.session.ldap, d);
     })
     .clientGetMyQuality('', month);
 }
 
 function exportQualityCSV() {
-  const d = window._qualityAgentData || window._qualityTeamData;
+  var d = window._qualityAgentData || window._qualityTeamData;
   if (!d) return;
 
-  let csv = 'Team,Audits,Customer,Business,Compliance,Average\n';
+  var csv = 'Team,Audits,Customer,Business,Compliance,Average\n';
   if (d.teams) {
-    d.teams.forEach(t => {
-      const avg = (t.stats.customer + t.stats.business + t.stats.compliance) / 3;
-      csv += `${t.teamName},${t.stats.count},${t.stats.customer.toFixed(1)}%,${t.stats.business.toFixed(1)}%,${t.stats.compliance.toFixed(1)}%,${avg.toFixed(1)}%\n`;
+    d.teams.forEach(function(t) {
+      var avg = (t.stats.customer + t.stats.business + t.stats.compliance) / 3;
+      csv += t.teamName + ',' + t.stats.count + ',' + t.stats.customer.toFixed(1) + '%,' + t.stats.business.toFixed(1) + '%,' + t.stats.compliance.toFixed(1) + '%,' + avg.toFixed(1) + '%\n';
     });
   }
 
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  var blob = new Blob([csv], { type: 'text/csv' });
+  var url = window.URL.createObjectURL(blob);
+  var a = document.createElement('a');
   a.setAttribute('hidden', '');
   a.setAttribute('href', url);
-  a.setAttribute('download', 'Quality_Report_' + window._qualitySelectedMonth + '.csv');
+  a.setAttribute('download', 'Quality_Report_' + (window._qualitySelectedMonth || 'export') + '.csv');
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
